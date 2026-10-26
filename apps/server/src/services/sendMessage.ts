@@ -1,8 +1,10 @@
 import type pg from 'pg';
+import { config } from '../config.js';
 import { db, transactionOn } from '../db.js';
 import { logger } from '../logger.js';
 import { recordAudit } from './audit.js';
-import { CONVERSATION_LOCK_KEY } from './conversations.js';
+import { CONVERSATION_LOCK_KEY, reasonToSkip } from './conversations.js';
+import { enqueueJob } from './jobs.js';
 import { mockSms } from './mockSms.js';
 
 // THE SEND GATE. Every automatic text leaves through sendAutomatedMessage and nowhere else.
@@ -22,6 +24,8 @@ export interface AutomatedMessage {
   /** One send per key, ever. For an AI reply: 'ai_reply:<the customer's message id>'. */
   idempotencyKey: string;
   author: 'ai' | 'system';
+  /** True for an AI reply: schedule the one "just checking in" text, in the same step as "sent". */
+  scheduleFollowUp?: boolean;
 }
 
 export type SendResult =
@@ -144,9 +148,8 @@ interface SendTarget {
 /** The reason this message must not go out, or null if it may. */
 function whyBlocked(target: SendTarget | undefined): string | null {
   if (!target) return 'conversation_not_found';
-  if (target.optedOut) return 'opted_out';
-  if (target.mode !== 'auto') return 'manual_mode';
-  if (target.leadStatus === 'closed') return 'lead_closed';
+  const skip = reasonToSkip(target); // STOP, Manual mode, closed lead
+  if (skip) return skip;
   if (!target.to) return 'no_phone_number';
   return null;
 }
@@ -167,6 +170,17 @@ async function markSent(
       'UPDATE conversations SET last_message_at = now() WHERE org_id = $1 AND id = $2',
       [msg.orgId, msg.conversationId],
     );
-    // M5: the "no reply yet" follow-up is scheduled here, in the same transaction.
+    if (msg.scheduleFollowUp) {
+      // Saved together with "sent": a reply that went out always has its follow-up planned.
+      // One per AI reply (the key), and the follow-up itself schedules nothing, so no chains.
+      await enqueueJob(tx, {
+        orgId: msg.orgId,
+        conversationId: msg.conversationId,
+        type: 'follow_up',
+        payload: { afterMessageId: messageId },
+        dedupeKey: `follow_up:${messageId}`,
+        runAt: new Date(Date.now() + config.FOLLOW_UP_DELAY_SECONDS * 1000),
+      });
+    }
   });
 }

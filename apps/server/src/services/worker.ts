@@ -1,10 +1,10 @@
 import { logger } from '../logger.js';
 import { handleAiReply } from './aiReply.js';
+import { handleFollowUp } from './followUp.js';
 import {
   type Job,
   type JobResult,
   type JobType,
-  PermanentJobError,
   cancelJob,
   claimJobs,
   completeJob,
@@ -19,9 +19,7 @@ const BATCH_SIZE = 5;
 // Which function handles which kind of job.
 const HANDLERS: Record<JobType, (job: Job) => Promise<JobResult>> = {
   ai_reply: handleAiReply,
-  follow_up: async () => {
-    throw new PermanentJobError('follow-up jobs are handled from M5');
-  },
+  follow_up: handleFollowUp,
 };
 
 /** Runs one job and records how it ended: done, cancelled, or failed (retry or dead). */

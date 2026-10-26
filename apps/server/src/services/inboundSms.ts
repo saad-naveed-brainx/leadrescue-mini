@@ -95,6 +95,17 @@ export async function handleInboundSms(
       )
     ).rows[0]!;
 
+    // Lock an existing conversation before changing it, the same as every other change does
+    // (send gate, Auto/Manual, closing). Always "lock first, then change" means two of them can
+    // never end up waiting for each other forever. A brand-new conversation needs no lock yet.
+    const existingConversation = (
+      await tx.query<{ id: string }>(
+        `SELECT id FROM conversations WHERE org_id = $1 AND lead_id = $2 AND channel = 'sms'`,
+        [orgId, lead.id],
+      )
+    ).rows[0];
+    if (existingConversation) await lockConversation(tx, existingConversation.id);
+
     const conversation = (
       await tx.query<{ id: string; mode: 'auto' | 'manual' }>(
         `INSERT INTO conversations (org_id, lead_id, phone_number_id, last_message_at)

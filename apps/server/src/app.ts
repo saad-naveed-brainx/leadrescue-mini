@@ -4,6 +4,7 @@ import { requestId } from './middleware/requestId.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { auditRouter } from './routes/audit.js';
 import { authRouter } from './routes/auth.js';
+import { conversationsRouter } from './routes/conversations.js';
 import { healthRouter } from './routes/health.js';
 import { leadsRouter } from './routes/leads.js';
 import { webhooksRouter } from './routes/webhooks.js';
@@ -21,6 +22,7 @@ app.use(express.json({ limit: '100kb' }));
 app.use(healthRouter);
 app.use(authRouter);
 app.use(leadsRouter);
+app.use(conversationsRouter);
 app.use(auditRouter);
 app.use(webhooksRouter);
 

@@ -38,3 +38,17 @@ export function postInbound(
       : opts.signature;
   return signature === null ? req : req.set('X-Twilio-Signature', signature);
 }
+
+/** A customer texts a business; returns the conversation that text landed in. */
+export async function customerTexts(app: Express, from: string, to: string, body: string) {
+  const res = await postInbound(app, { From: from, To: to, Body: body });
+  if (res.status !== 200) throw new Error(`inbound webhook answered ${res.status}`);
+  const { db } = await import('../../src/db.js');
+  const { rows } = await db.query<{ id: string }>(
+    `SELECT c.id FROM conversations c JOIN leads l ON l.org_id = c.org_id AND l.id = c.lead_id
+       JOIN phone_numbers p ON p.org_id = c.org_id AND p.e164 = $2
+      WHERE l.phone_e164 = $1`,
+    [from, to],
+  );
+  return rows[0]!.id;
+}

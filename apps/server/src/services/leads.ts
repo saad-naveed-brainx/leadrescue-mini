@@ -3,6 +3,8 @@ import { db, withTransaction } from '../db.js';
 import type { AuthContext } from '../middleware/auth.js';
 import { AppError, notFound } from '../middleware/errors.js';
 import { recordAudit } from './audit.js';
+import { lockConversation } from './conversations.js';
+import { cancelPendingJobs } from './jobs.js';
 
 // Every query here filters by org_id. That is the wall between businesses: a lead id from another
 // business simply matches no row, so the caller gets "not found".
@@ -173,6 +175,21 @@ export async function updateLead(
         throw new AppError(400, 'VALIDATION_FAILED', 'A lead needs an email or a phone number', [
           { path: 'email', message: 'Enter an email or a phone number' },
         ]);
+      }
+
+      // Closing a lead stops all automation for it. Lock its conversation first (the same lock as
+      // the send gate), so a text being sent right now finishes before the lead is closed, and
+      // everything after sees "closed". Then cancel whatever was still waiting.
+      const closing = input.status === 'closed' && before.status !== 'closed';
+      const conversation = (
+        await tx.query<{ id: string }>(
+          `SELECT id FROM conversations WHERE org_id = $1 AND lead_id = $2 AND channel = 'sms'`,
+          [auth.orgId, id],
+        )
+      ).rows[0];
+      if (closing && conversation) {
+        await lockConversation(tx, conversation.id);
+        await cancelPendingJobs(tx, auth.orgId, conversation.id, 'lead_closed');
       }
 
       // Build "SET name = $3, status = $4, ..." from the fields that were sent.

@@ -10,6 +10,7 @@ export default defineConfig({
       AUTH_JWT_SECRET: 'test-only-secret-not-used-anywhere-else-0000',
       TWILIO_AUTH_TOKEN: 'test-only-twilio-token-0000',
       PUBLIC_BASE_URL: 'https://api.leadrescue.test',
+      FOLLOW_UP_DELAY_SECONDS: '60',
     },
     globalSetup: ['./test/globalSetup.ts'],
     // Test files share one database, so they run one at a time.

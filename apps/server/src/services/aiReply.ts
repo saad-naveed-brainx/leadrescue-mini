@@ -1,5 +1,6 @@
 import { db } from '../db.js';
 import { type Job, type JobResult, PermanentJobError } from './jobs.js';
+import { loadForAutomation, reasonToSkip } from './conversations.js';
 import { mockAi } from './mockAi.js';
 import { sendAutomatedMessage } from './sendMessage.js';
 
@@ -15,28 +16,10 @@ export async function handleAiReply(job: Job): Promise<JobResult> {
 
   // 1. Quick checks before asking the AI. (The send gate checks again under the lock; these only
   //    save an AI call that would be thrown away.)
-  const conv = (
-    await db.query<{
-      businessName: string;
-      mode: string;
-      leadStatus: string;
-      optedOut: boolean;
-    }>(
-      `SELECT o.name AS "businessName", c.mode, l.status AS "leadStatus",
-              EXISTS (SELECT 1 FROM opt_outs x
-                       WHERE x.org_id = c.org_id AND x.phone_e164 = l.phone_e164
-                         AND x.channel = 'sms' AND x.revoked_at IS NULL) AS "optedOut"
-         FROM conversations c
-         JOIN leads l ON l.org_id = c.org_id AND l.id = c.lead_id
-         JOIN organizations o ON o.id = c.org_id
-        WHERE c.org_id = $1 AND c.id = $2`,
-      [job.orgId, job.conversationId],
-    )
-  ).rows[0];
+  const conv = await loadForAutomation(job.orgId, job.conversationId);
   if (!conv) throw new PermanentJobError('conversation not found');
-  if (conv.optedOut) return { outcome: 'cancelled', reason: 'opted_out' };
-  if (conv.mode !== 'auto') return { outcome: 'cancelled', reason: 'manual_mode' };
-  if (conv.leadStatus === 'closed') return { outcome: 'cancelled', reason: 'lead_closed' };
+  const skip = reasonToSkip(conv);
+  if (skip) return { outcome: 'cancelled', reason: skip };
 
   // The customer sent another message after this one, and that message has its own reply job.
   // Answer only the latest, so they get one reply instead of two in a row.
@@ -76,6 +59,7 @@ export async function handleAiReply(job: Job): Promise<JobResult> {
     body: reply,
     idempotencyKey: `ai_reply:${inboundMessageId}`,
     author: 'ai',
+    scheduleFollowUp: true,
   });
   if (result.outcome === 'blocked') return { outcome: 'cancelled', reason: result.reason };
   return { outcome: 'done' };

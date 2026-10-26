@@ -35,6 +35,10 @@ export const config = {
   // The public address Twilio calls. Twilio's signature covers the full URL, so we rebuild it from
   // this setting (never from the request's Host header, which a caller could fake).
   PUBLIC_BASE_URL: (process.env.PUBLIC_BASE_URL ?? 'http://localhost:4000').replace(/\/+$/, ''),
+
+  // How long after an AI reply to send the one "just checking in" text if the customer stays
+  // quiet. 24 hours normally; set it to 30 in .env to watch it happen in a demo.
+  FOLLOW_UP_DELAY_SECONDS: Number(process.env.FOLLOW_UP_DELAY_SECONDS ?? 24 * 60 * 60),
 };
 
 // Refuse to start with settings that are unsafe or that would only fail later.
@@ -53,9 +57,12 @@ if (config.TWILIO_AUTH_TOKEN.length < 16) {
 }
 if (
   !isPositiveWholeNumber(config.API_PORT) ||
-  !isPositiveWholeNumber(config.AUTH_TOKEN_TTL_SECONDS)
+  !isPositiveWholeNumber(config.AUTH_TOKEN_TTL_SECONDS) ||
+  !isPositiveWholeNumber(config.FOLLOW_UP_DELAY_SECONDS)
 ) {
-  throw new Error('API_PORT and AUTH_TOKEN_TTL_SECONDS must be whole numbers above 0');
+  throw new Error(
+    'API_PORT, AUTH_TOKEN_TTL_SECONDS and FOLLOW_UP_DELAY_SECONDS must be whole numbers above 0',
+  );
 }
 // The only sign-in today is the dev login, where anyone can pick any user. Never in production.
 if (config.NODE_ENV === 'production') {
