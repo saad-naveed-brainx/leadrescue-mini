@@ -20,6 +20,7 @@
     "@lr/shared": "^0.0.0",
     "cors": "^2.8.6",
     "express": "^5.3.0",
+    "express-rate-limit": "^8.7.1",
     "helmet": "^8.3.0",
     "jose": "^6.2.13",
     "pg": "^8.23.1",

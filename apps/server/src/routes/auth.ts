@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { db } from '../db.js';
 import { authOf, permissionsFor, requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/errors.js';
+import { loginRateLimit } from '../middleware/rateLimits.js';
 import { signToken } from '../utils/tokens.js';
 
 export const authRouter = Router();
@@ -45,7 +46,7 @@ authRouter.get('/auth/dev-identities', async (_req, res) => {
   res.json({ identities: [...byUser.values()] });
 });
 
-authRouter.post('/auth/dev-login', async (req, res) => {
+authRouter.post('/auth/dev-login', loginRateLimit, async (req, res) => {
   const input = DevLoginInput.parse(req.body);
   const { rows } = await db.query<{ org_id: string; suspended: boolean }>(
     `SELECT m.org_id, u.suspended_at IS NOT NULL AS suspended

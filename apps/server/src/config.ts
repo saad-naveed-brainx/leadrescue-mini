@@ -45,6 +45,10 @@ export const config = {
 
   // How long a worker may hold a job before others assume it crashed and take it over.
   WORKER_LEASE_SECONDS: Number(process.env.WORKER_LEASE_SECONDS ?? 60),
+
+  // Requests per minute one IP address may make to the dev login and to the Twilio webhooks.
+  RATE_LIMIT_LOGIN_PER_MINUTE: Number(process.env.RATE_LIMIT_LOGIN_PER_MINUTE ?? 10),
+  RATE_LIMIT_WEBHOOK_PER_MINUTE: Number(process.env.RATE_LIMIT_WEBHOOK_PER_MINUTE ?? 300),
 };
 
 // Refuse to start with settings that are unsafe or that would only fail later.
@@ -69,10 +73,12 @@ if (
   !isPositiveWholeNumber(config.API_PORT) ||
   !isPositiveWholeNumber(config.AUTH_TOKEN_TTL_SECONDS) ||
   !isPositiveWholeNumber(config.FOLLOW_UP_DELAY_SECONDS) ||
-  !isPositiveWholeNumber(config.WORKER_LEASE_SECONDS)
+  !isPositiveWholeNumber(config.WORKER_LEASE_SECONDS) ||
+  !isPositiveWholeNumber(config.RATE_LIMIT_LOGIN_PER_MINUTE) ||
+  !isPositiveWholeNumber(config.RATE_LIMIT_WEBHOOK_PER_MINUTE)
 ) {
   throw new Error(
-    'API_PORT, AUTH_TOKEN_TTL_SECONDS, FOLLOW_UP_DELAY_SECONDS and WORKER_LEASE_SECONDS must be whole numbers above 0',
+    'API_PORT, AUTH_TOKEN_TTL_SECONDS, FOLLOW_UP_DELAY_SECONDS, WORKER_LEASE_SECONDS and the RATE_LIMIT_ settings must be whole numbers above 0',
   );
 }
 // The only sign-in today is the dev login, where anyone can pick any user. Never in production.

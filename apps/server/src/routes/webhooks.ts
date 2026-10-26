@@ -1,6 +1,7 @@
 import express, { Router, type RequestHandler } from 'express';
 import { config } from '../config.js';
 import { AppError } from '../middleware/errors.js';
+import { webhookRateLimit } from '../middleware/rateLimits.js';
 import { TwilioInbound, handleInboundSms } from '../services/inboundSms.js';
 import { type WebhookParams, isValidTwilioSignature } from '../utils/twilioSignature.js';
 
@@ -39,6 +40,7 @@ export const webhooksRouter = Router();
 
 webhooksRouter.use(
   '/webhooks/twilio',
+  webhookRateLimit,
   // Twilio posts form-encoded bodies; flat parsing is all it needs.
   express.urlencoded({ extended: false, limit: '64kb' }),
   requireTwilioSignature(config.TWILIO_AUTH_TOKEN, config.PUBLIC_BASE_URL),
