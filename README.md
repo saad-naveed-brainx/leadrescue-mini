@@ -41,7 +41,7 @@ Pick the user at the top right (Alice = Company A, Bob = Company B). Then:
 ### Tests
 
 ```bash
-npm test             # 36 tests against a separate test database
+npm test             # 37 tests against a separate test database
 npm run check        # typecheck + lint + tests
 ```
 
