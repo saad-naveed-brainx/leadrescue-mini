@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: leadrescue
+      POSTGRES_PASSWORD: leadrescue_local_only
+      POSTGRES_DB: leadrescue
+    ports:
+      # 55432 on the host so it doesn't clash with a locally installed Postgres on 5432.
+      - '55432:5432'
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./docker/db-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U leadrescue -d leadrescue']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  db-data:
