@@ -1,5 +1,6 @@
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
 import { type Lead, LEAD_STATUSES, apiFetch } from './api';
+import { LeadRow } from './LeadRow';
 
 // The current company's leads, newest first, and a form to add one.
 export function LeadsPage({ user }: { user: string }) {
@@ -20,6 +21,11 @@ export function LeadsPage({ user }: { user: string }) {
     void loadLeads();
   }, [loadLeads]);
 
+  // After an edit, swap in the lead the API sent back, so the list shows what was saved.
+  function replaceLead(updated: Lead) {
+    setLeads((current) => current.map((l) => (l.id === updated.id ? updated : l)));
+  }
+
   return (
     <>
       <h1>Leads</h1>
@@ -39,15 +45,7 @@ export function LeadsPage({ user }: { user: string }) {
           </thead>
           <tbody>
             {leads.map((lead) => (
-              <tr key={lead.id}>
-                {/* A lead created by an incoming SMS has no name yet. */}
-                <td>{lead.name ?? <span className="muted">(from SMS)</span>}</td>
-                <td>{lead.phone}</td>
-                <td>
-                  <span className={`status status-${lead.status}`}>{lead.status}</span>
-                </td>
-                <td className="muted">{lead.notes}</td>
-              </tr>
+              <LeadRow key={lead.id} user={user} lead={lead} onChanged={replaceLead} />
             ))}
           </tbody>
         </table>

@@ -91,3 +91,15 @@ td {
   width: 100%;
   margin: 4px 0 0;
 }
+.notes-form {
+  display: flex;
+  gap: 6px;
+}
+.notes-form input {
+  flex: 1;
+  min-width: 0;
+}
+select.status {
+  border: none;
+  cursor: pointer;
+}

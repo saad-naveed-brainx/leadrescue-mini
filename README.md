@@ -32,7 +32,7 @@ With the API running, in a second terminal:
 npm run dev:web      # http://localhost:5173
 ```
 
-Pick the user at the top right (Alice = Company A, Bob = Company B). The page lists that company's leads and has a form to add one. It calls the API through Vite's proxy (`/api/...` → `localhost:4000`), so the API needs no CORS settings.
+Pick the user at the top right (Alice = Company A, Bob = Company B). The page lists that company's leads, has a form to add one, and lets you change a lead's status (saved as soon as you pick it) and notes (Save button; an empty box clears them). It calls the API through Vite's proxy (`/api/...` → `localhost:4000`), so the API needs no CORS settings.
 
 ### Tests
 
@@ -224,7 +224,7 @@ Real Twilio signs every webhook. To add it in production:
 - **The mock login is not security** (see §4). There are no roles: any user of a company can do everything in that company.
 - **`GET /leads` returns at most 200 leads**, with no paging, search or filter.
 - **No Twilio signature check, rate limiting, security headers or CORS.** These are deliberate omissions for this offline exercise.
-- **The web UI is minimal** (lead list and create form). It has no automated tests; the API tests cover the rules.
+- **The web UI is minimal** (lead list, create form, status and notes editing). It has no automated tests; the API tests cover the rules.
 
 ## 6. What I would improve with another day
 
@@ -255,7 +255,7 @@ src/services/aiSender.ts        the stubbed AI sender
 src/services/conversations.ts   hand-off and conversation view
 src/scripts/                    migrate, seed
 test/                           tenant isolation, leads, webhook duplicates, hand-off and races
-web/                            optional React UI (Vite): user switcher, lead list, create form
+web/                            optional React UI (Vite): user switcher, lead list, create form, status/notes editing
 ```
 
 The tests cover the three the brief requires, among others:
