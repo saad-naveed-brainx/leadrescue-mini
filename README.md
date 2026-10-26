@@ -24,6 +24,16 @@ npm run dev          # API on http://localhost:4000 (restarts on file changes)
 
 `npm start` runs the API without watching for changes. Stop it with Ctrl-C.
 
+### Optional web UI
+
+With the API running, in a second terminal:
+
+```bash
+npm run dev:web      # http://localhost:5173
+```
+
+Pick the user at the top right (Alice = Company A, Bob = Company B). The page lists that company's leads and has a form to add one. It calls the API through Vite's proxy (`/api/...` → `localhost:4000`), so the API needs no CORS settings.
+
 ### Tests
 
 ```bash
@@ -214,7 +224,7 @@ Real Twilio signs every webhook. To add it in production:
 - **The mock login is not security** (see §4). There are no roles: any user of a company can do everything in that company.
 - **`GET /leads` returns at most 200 leads**, with no paging, search or filter.
 - **No Twilio signature check, rate limiting, security headers or CORS.** These are deliberate omissions for this offline exercise.
-- **No UI.** The React UI was optional; the API is used with curl or the tests.
+- **The web UI is minimal** (lead list and create form). It has no automated tests; the API tests cover the rules.
 
 ## 6. What I would improve with another day
 
@@ -222,7 +232,7 @@ Real Twilio signs every webhook. To add it in production:
 2. **Real authentication** (OIDC tokens) and **roles** (owner/manager/member). Also PostgreSQL row-level security, as a second wall between companies.
 3. **Twilio signature verification**, the real form-encoded payload, rate limits and security headers.
 4. **Customer opt-out (STOP/START)**, honoured by the same lock as the hand-off, and an **audit log** of who switched modes and when.
-5. **Lead list paging and search**, and a small React screen for leads and conversations.
+5. **Lead list paging and search**, and UI tests.
 6. **Docker Compose for the API too**, so one command starts everything, and CI running `npm run check`.
 
 ---
@@ -245,6 +255,7 @@ src/services/aiSender.ts        the stubbed AI sender
 src/services/conversations.ts   hand-off and conversation view
 src/scripts/                    migrate, seed
 test/                           tenant isolation, leads, webhook duplicates, hand-off and races
+web/                            optional React UI (Vite): user switcher, lead list, create form
 ```
 
 The tests cover the three the brief requires, among others:
