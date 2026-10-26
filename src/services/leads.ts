@@ -5,7 +5,10 @@ import type { LeadCreateInput, LeadUpdateInput } from '../validation.js';
 // Every query here filters by tenant_id. That is the wall between companies: a lead id from
 // another company simply matches no row, so the caller gets "not found", as if it didn't exist.
 
-const COLUMNS = `id, name, phone, email, status, notes, created_at AS "createdAt", updated_at AS "updatedAt"`;
+// conversationId: the lead's SMS conversation, or null if they have never texted. Same company only.
+const COLUMNS = `id, name, phone, email, status, notes, created_at AS "createdAt", updated_at AS "updatedAt",
+  (SELECT c.id FROM conversations c
+    WHERE c.tenant_id = leads.tenant_id AND c.lead_id = leads.id) AS "conversationId"`;
 
 export interface Lead {
   id: string;
@@ -16,6 +19,7 @@ export interface Lead {
   notes: string | null;
   createdAt: Date;
   updatedAt: Date;
+  conversationId: string | null;
 }
 
 export async function listLeads(tenantId: string): Promise<Lead[]> {

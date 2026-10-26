@@ -7,10 +7,12 @@ export function LeadRow({
   user,
   lead,
   onChanged,
+  onOpenConversation,
 }: {
   user: string;
   lead: Lead;
   onChanged: (lead: Lead) => void;
+  onOpenConversation: (conversationId: string) => void;
 }) {
   const [notes, setNotes] = useState(lead.notes ?? '');
   const [saving, setSaving] = useState(false);
@@ -74,6 +76,13 @@ export function LeadRow({
           )}
         </form>
         {error && <p className="error">{error}</p>}
+      </td>
+      <td>
+        {lead.conversationId ? (
+          <button onClick={() => onOpenConversation(lead.conversationId!)}>Open</button>
+        ) : (
+          <span className="muted">none yet</span>
+        )}
       </td>
     </tr>
   );

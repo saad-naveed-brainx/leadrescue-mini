@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../src/db.js';
-import { ALICE_A, BOB_B, as, resetDb } from './helpers.js';
+import { ALICE_A, BOB_B, as, resetDb, sendSms } from './helpers.js';
 
 beforeEach(resetDb);
 afterAll(() => db.end());
@@ -65,6 +65,14 @@ describe('GET /leads', () => {
     const names = res.body.leads.map((l: { name: string }) => l.name);
     expect(names[0]).toBe('Newest');
     expect([...names].sort()).toEqual(['James Carter', 'Maria Lopez', 'Newest']);
+  });
+  it("each lead carries its conversation's id once the customer has texted", async () => {
+    const sms = await sendSms({ fromNumber: '+16465550110' }); // Maria Lopez texts Company A
+    const res = await as(ALICE_A).get('/leads');
+    const maria = res.body.leads.find((l: { name: string }) => l.name === 'Maria Lopez');
+    const james = res.body.leads.find((l: { name: string }) => l.name === 'James Carter');
+    expect(maria.conversationId).toBe(sms.body.conversationId);
+    expect(james.conversationId).toBeNull();
   });
 });
 

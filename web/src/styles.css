@@ -103,3 +103,66 @@ select.status {
   border: none;
   cursor: pointer;
 }
+.grow {
+  flex: 1;
+  min-width: 160px;
+}
+.outcome {
+  width: 100%;
+  margin: 4px 0 0;
+}
+.conversation {
+  margin-top: 16px;
+}
+.conversation-head,
+.mode-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.mode {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.9rem;
+}
+.mode-AI {
+  background: #dafbe1;
+}
+.mode-MANUAL {
+  background: #fff8c5;
+}
+.messages {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+.message {
+  max-width: 80%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  display: grid;
+  gap: 2px;
+}
+.message-customer {
+  background: #f6f8fa;
+  justify-self: start;
+}
+.message-ai {
+  background: #ddf4ff;
+  justify-self: end;
+}
+.message-author {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.message time {
+  font-size: 0.75rem;
+}
+/* On a narrow screen the table scrolls sideways inside its box, not the whole page. */
+.table-wrap {
+  overflow-x: auto;
+}
