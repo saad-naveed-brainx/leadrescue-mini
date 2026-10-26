@@ -1,5 +1,4 @@
-import type { Queryable } from '../../db/queryable.js';
-import { currentRequestId } from '../../http/requestContext.js';
+import { type DbClient, db } from '../db.js';
 
 export interface AuditEvent {
   orgId: string | null;
@@ -9,14 +8,16 @@ export interface AuditEvent {
   targetType?: string;
   targetId?: string;
   metadata?: Record<string, unknown>;
+  /** The request that caused it, to find the matching lines in the logs. */
+  requestId?: string;
 }
 
 /**
- * Appends one audit event. Pass the transaction's client so the event commits or rolls back
- * together with the change it describes.
+ * Adds one event to the audit history. Pass the transaction (`tx`) that makes the change, so the
+ * event is saved together with the change or not at all.
  */
-export async function recordAudit(db: Queryable, e: AuditEvent): Promise<void> {
-  await db.query(
+export async function recordAudit(tx: DbClient, e: AuditEvent): Promise<void> {
+  await tx.query(
     `INSERT INTO audit_events
        (org_id, actor_type, actor_user_id, action, target_type, target_id, metadata, correlation_id)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
@@ -28,7 +29,7 @@ export async function recordAudit(db: Queryable, e: AuditEvent): Promise<void> {
       e.targetType ?? null,
       e.targetId ?? null,
       e.metadata ?? {},
-      currentRequestId() ?? null,
+      e.requestId ?? null,
     ],
   );
 }
@@ -50,7 +51,6 @@ export interface AuditEventDto {
  * so this pages through the whole history without gaps or repeats.
  */
 export async function listAuditEvents(
-  db: Queryable,
   orgId: string,
   { limit, beforeId }: { limit: number; beforeId?: string | undefined },
 ) {

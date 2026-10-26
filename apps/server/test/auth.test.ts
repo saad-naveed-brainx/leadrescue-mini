@@ -1,6 +1,6 @@
 import request from 'supertest';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { signToken } from '../src/auth/tokens.js';
+import { signToken } from '../src/utils/tokens.js';
 import { testApp } from './helpers/app.js';
 import { bearer } from './helpers/auth.js';
 import { SEED, resetDb } from './helpers/db.js';

@@ -13,8 +13,8 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { config } from '../config.js';
-import { SEED } from '../db/seed.js';
-import { computeTwilioSignature } from '../modules/webhooks/twilioSignature.js';
+import { SEED } from './seed.js';
+import { computeTwilioSignature } from '../utils/twilioSignature.js';
 
 const { values } = parseArgs({
   options: {

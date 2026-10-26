@@ -1,5 +1,5 @@
-import { signToken } from '../../src/auth/tokens.js';
-import { SEED } from '../../src/db/seed.js';
+import { signToken } from '../../src/utils/tokens.js';
+import { SEED } from '../../src/scripts/seed.js';
 
 type SeedUser = keyof typeof SEED.users;
 

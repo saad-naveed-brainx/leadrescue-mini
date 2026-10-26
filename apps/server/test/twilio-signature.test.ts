@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  computeTwilioSignature,
-  isValidTwilioSignature,
-} from '../src/modules/webhooks/twilioSignature.js';
+import { computeTwilioSignature, isValidTwilioSignature } from '../src/utils/twilioSignature.js';
 
 const TOKEN = 'test-auth-token-123456';
 const URL = 'https://api.leadrescue.test/webhooks/twilio/inbound';

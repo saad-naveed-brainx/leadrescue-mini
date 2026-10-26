@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Pool } from './pool.js';
+import type pg from 'pg';
 
 export const MIGRATIONS_DIR = fileURLToPath(new URL('../../migrations', import.meta.url));
 
@@ -19,7 +19,7 @@ export interface MigrationResult {
  * each in its own transaction. Forward-only: there are no down migrations.
  * An applied file whose contents changed afterwards is an error, not something to re-run.
  */
-export async function runMigrations(pool: Pool, dir = MIGRATIONS_DIR): Promise<MigrationResult> {
+export async function runMigrations(pool: pg.Pool, dir = MIGRATIONS_DIR): Promise<MigrationResult> {
   const files = (await readdir(dir)).filter((f) => /^\d{4}_[\w-]+\.sql$/.test(f)).sort();
   const client = await pool.connect();
   const result: MigrationResult = { applied: [], skipped: [] };
@@ -71,16 +71,14 @@ export async function runMigrations(pool: Pool, dir = MIGRATIONS_DIR): Promise<M
   }
 }
 
-// CLI: `npm run migrate`
+// Runs only when started from the command line (`npm run migrate`), not when a test imports this file.
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
-  const { config } = await import('../config.js');
-  const { createPool } = await import('./pool.js');
-  const pool = createPool(config.DATABASE_URL);
+  const { db } = await import('../db.js');
   try {
-    const { applied, skipped } = await runMigrations(pool);
+    const { applied, skipped } = await runMigrations(db);
     console.log(`migrations: ${applied.length} applied, ${skipped.length} already up to date`);
     for (const f of applied) console.log(`  applied ${f}`);
   } finally {
-    await pool.end();
+    await db.end();
   }
 }

@@ -1,5 +1,4 @@
-import type { Queryable } from '../db/queryable.js';
-import { currentRequestId } from '../http/requestContext.js';
+import type { DbClient } from '../db.js';
 
 export type JobType = 'ai_reply' | 'follow_up';
 
@@ -8,17 +7,18 @@ export interface NewJob {
   conversationId: string;
   type: JobType;
   payload: Record<string, unknown>;
-  /** Same key → same job: a second enqueue with this key is ignored. */
+  /** Same key → same job: a second job with this key is ignored. */
   dedupeKey: string;
   runAt?: Date;
+  requestId?: string;
 }
 
 /**
- * Adds a job to the PostgreSQL-backed queue. Call it with the transaction that writes the data the
- * job is about, so the job exists if and only if that data was committed.
+ * Adds a job to the queue (the workflow_jobs table). Pass the transaction that saves the data the
+ * job is about, so the job exists if and only if that data was saved.
  * Returns the job id, or null if a job with this dedupe key already existed.
  */
-export async function enqueueJob(tx: Queryable, job: NewJob): Promise<string | null> {
+export async function enqueueJob(tx: DbClient, job: NewJob): Promise<string | null> {
   const { rows } = await tx.query<{ id: string }>(
     `INSERT INTO workflow_jobs (org_id, conversation_id, type, payload, dedupe_key, run_at, correlation_id)
      VALUES ($1, $2, $3, $4, $5, coalesce($6, now()), $7)
@@ -31,7 +31,7 @@ export async function enqueueJob(tx: Queryable, job: NewJob): Promise<string | n
       job.payload,
       job.dedupeKey,
       job.runAt ?? null,
-      currentRequestId() ?? null,
+      job.requestId ?? null,
     ],
   );
   return rows[0]?.id ?? null;
@@ -39,7 +39,7 @@ export async function enqueueJob(tx: Queryable, job: NewJob): Promise<string | n
 
 /** Cancels a conversation's jobs that haven't started. A job already running re-checks at send time. */
 export async function cancelPendingJobs(
-  tx: Queryable,
+  tx: DbClient,
   orgId: string,
   conversationId: string,
   reason: string,

@@ -1,12 +1,11 @@
 import request from 'supertest';
-import { afterAll, describe, expect, it } from 'vitest';
-import { config } from '../src/config.js';
-import { createPool } from '../src/db/pool.js';
-import { createApp } from '../src/http/app.js';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
+import { app } from '../src/app.js';
+import { db } from '../src/db.js';
 
-const pool = createPool(config.DATABASE_URL);
-const app = createApp({ pool });
-afterAll(() => pool.end());
+afterAll(() => db.end());
+// Undo any fake database answers so they can't leak into the next test.
+afterEach(() => vi.restoreAllMocks());
 
 describe('health endpoints', () => {
   it('reports liveness', async () => {
@@ -22,9 +21,9 @@ describe('health endpoints', () => {
   });
 
   it('reports 503 when the database is unreachable', async () => {
-    const deadPool = createPool('postgres://nobody:nothing@127.0.0.1:1/none');
-    const res = await request(createApp({ pool: deadPool })).get('/health/ready');
-    await deadPool.end();
+    // Pretend the database is down for this one query.
+    vi.spyOn(db, 'query').mockRejectedValueOnce(new Error('connection refused'));
+    const res = await request(app).get('/health/ready');
     expect(res.status).toBe(503);
     expect(res.body.db).toBe('unreachable');
   });

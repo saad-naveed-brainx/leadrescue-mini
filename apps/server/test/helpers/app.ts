@@ -1,8 +1,7 @@
-import { createApp } from '../../src/http/app.js';
-import { testPool } from './db.js';
+import { app } from '../../src/app.js';
+import { db } from '../../src/db.js';
 
-/** A pool on the test database and an app using it. End the pool in afterAll. */
+/** The app, and the shared database pool it uses. End the pool in afterAll. */
 export function testApp() {
-  const pool = testPool();
-  return { pool, app: createApp({ pool }) };
+  return { pool: db, app };
 }

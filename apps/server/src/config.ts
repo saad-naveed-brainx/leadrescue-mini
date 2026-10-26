@@ -1,54 +1,63 @@
 import { fileURLToPath } from 'node:url';
-import { z } from 'zod';
 
-// Load the repo-root .env when present (local dev). Docker sets the environment directly,
-// and the test runner sets its own values, so .env must not override them.
+// All settings come from environment variables. Locally they are read from the .env file in the
+// repo root. Docker and the tests set them directly, so .env is skipped there.
 if (process.env.NODE_ENV !== 'test') {
   try {
     process.loadEnvFile(fileURLToPath(new URL('../../../.env', import.meta.url)));
   } catch {
-    // no .env file: rely on the real environment
+    // No .env file: use the environment as it is.
   }
 }
 
-const EnvSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
-  API_PORT: z.coerce.number().int().positive().default(4000),
-  DATABASE_URL: z.url(),
-  // 'local' = the documented test-identity login (see auth/localJwt.ts). The only mode for now.
-  AUTH_MODE: z.enum(['local']).default('local'),
-  AUTH_JWT_SECRET: z.string().min(32, 'must be at least 32 characters'),
-  AUTH_TOKEN_TTL_SECONDS: z.coerce
-    .number()
-    .int()
-    .positive()
-    .default(8 * 3600),
-  // Verifies that inbound webhooks were signed by Twilio. Any value works with the mock; a real
-  // deployment uses the Twilio account's auth token.
-  TWILIO_AUTH_TOKEN: z.string().min(16, 'must be at least 16 characters'),
-  // The address Twilio calls, exactly as configured in Twilio. Signatures cover the full URL, and
-  // behind a proxy the Host header can't be trusted to rebuild it.
-  PUBLIC_BASE_URL: z
-    .url()
-    .default('http://localhost:4000')
-    .transform((u) => u.replace(/\/+$/, '')),
-});
-
-export type Config = z.infer<typeof EnvSchema>;
-
-function loadConfig(): Config {
-  const parsed = EnvSchema.safeParse(process.env);
-  if (!parsed.success) {
-    // Print which variables are wrong, never their values (they may be secrets).
-    const problems = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`);
-    throw new Error(`Invalid environment configuration:\n  ${problems.join('\n  ')}`);
-  }
-  // The test-identity login lets anyone pick any seeded user: never acceptable in production.
-  if (parsed.data.NODE_ENV === 'production' && parsed.data.AUTH_MODE === 'local') {
-    throw new Error('AUTH_MODE=local is a development login and must not run in production');
-  }
-  return parsed.data;
+function isPositiveWholeNumber(n: number): boolean {
+  return Number.isInteger(n) && n > 0;
 }
 
-export const config = loadConfig();
+function required(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`Missing setting ${name}. Add it to .env (see .env.example).`);
+  return value;
+}
+
+export const config = {
+  NODE_ENV: process.env.NODE_ENV ?? 'development',
+  LOG_LEVEL: process.env.LOG_LEVEL ?? 'info',
+  API_PORT: Number(process.env.API_PORT ?? 4000),
+  DATABASE_URL: required('DATABASE_URL'),
+
+  // Signs login tokens. Anyone who knows it could sign in as anyone, so it must be long and secret.
+  AUTH_JWT_SECRET: required('AUTH_JWT_SECRET'),
+  AUTH_TOKEN_TTL_SECONDS: Number(process.env.AUTH_TOKEN_TTL_SECONDS ?? 8 * 60 * 60),
+
+  // Used to check that incoming webhooks really come from Twilio.
+  TWILIO_AUTH_TOKEN: required('TWILIO_AUTH_TOKEN'),
+  // The public address Twilio calls. Twilio's signature covers the full URL, so we rebuild it from
+  // this setting (never from the request's Host header, which a caller could fake).
+  PUBLIC_BASE_URL: (process.env.PUBLIC_BASE_URL ?? 'http://localhost:4000').replace(/\/+$/, ''),
+};
+
+// Refuse to start with settings that are unsafe or that would only fail later.
+if (!['development', 'test', 'production'].includes(config.NODE_ENV)) {
+  // A typo like "prod" must not slip past the production check below.
+  throw new Error('NODE_ENV must be development, test or production');
+}
+if (!URL.canParse(config.DATABASE_URL) || !URL.canParse(config.PUBLIC_BASE_URL)) {
+  throw new Error('DATABASE_URL and PUBLIC_BASE_URL must be full URLs');
+}
+if (config.AUTH_JWT_SECRET.length < 32) {
+  throw new Error('AUTH_JWT_SECRET must be at least 32 characters');
+}
+if (config.TWILIO_AUTH_TOKEN.length < 16) {
+  throw new Error('TWILIO_AUTH_TOKEN must be at least 16 characters');
+}
+if (
+  !isPositiveWholeNumber(config.API_PORT) ||
+  !isPositiveWholeNumber(config.AUTH_TOKEN_TTL_SECONDS)
+) {
+  throw new Error('API_PORT and AUTH_TOKEN_TTL_SECONDS must be whole numbers above 0');
+}
+// The only sign-in today is the dev login, where anyone can pick any user. Never in production.
+if (config.NODE_ENV === 'production') {
+  throw new Error('The dev login must not run in production');
+}

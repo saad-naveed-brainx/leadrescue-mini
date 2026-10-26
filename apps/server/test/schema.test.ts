@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { seed } from '../src/db/seed.js';
-import { withTx } from '../src/db/pool.js';
+import { withTransaction } from '../src/db.js';
+import { seed } from '../src/scripts/seed.js';
 import {
   PG,
   SEED,
@@ -42,7 +42,7 @@ describe('seed data', () => {
   });
 
   it('is safe to run twice', async () => {
-    await withTx(pool, seed);
+    await withTransaction(seed);
     expect(await count('SELECT 1 FROM leads')).toBe(SEED_LEADS.length);
     expect(await count('SELECT 1 FROM users')).toBe(5);
   });

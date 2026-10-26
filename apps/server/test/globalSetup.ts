@@ -1,5 +1,5 @@
-import { runMigrations } from '../src/db/migrate.js';
-import { createPool } from '../src/db/pool.js';
+import pg from 'pg';
+import { runMigrations } from '../src/scripts/migrate.js';
 import { TEST_DATABASE_URL } from './testDatabaseUrl.js';
 
 // Once per `npm test`: rebuild the test database's schema from the migrations, so tests always run
@@ -10,7 +10,7 @@ export default async function setup() {
   if (!dbName.endsWith('_test')) {
     throw new Error(`Refusing to reset "${dbName}": TEST_DATABASE_URL must name a *_test database`);
   }
-  const pool = createPool(TEST_DATABASE_URL);
+  const pool = new pg.Pool({ connectionString: TEST_DATABASE_URL });
   try {
     await pool.query('DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public');
     await runMigrations(pool);

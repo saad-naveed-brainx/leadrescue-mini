@@ -1,5 +1,5 @@
 import type { LeadDto } from '@lr/shared';
-import type { Queryable } from '../../db/queryable.js';
+import { type DbClient, db } from '../db.js';
 
 export interface ConversationDto {
   id: string;
@@ -28,7 +28,6 @@ export interface LeadConversationDto {
 
 /** The lead's SMS conversation and its messages, oldest first. The lead must already be org-checked. */
 export async function getLeadConversation(
-  db: Queryable,
   orgId: string,
   lead: LeadDto,
   messageLimit = 200,
@@ -62,4 +61,16 @@ export async function getLeadConversation(
     : { rowCount: 0 };
 
   return { conversation, messages, optedOut: (optOut.rowCount ?? 0) > 0 };
+}
+
+/**
+ * The per-conversation lock (PLAN.md §5.4). Everything that decides whether an automatic message
+ * may go out takes it: sending, the Auto/Manual switch, STOP handling and closing a lead. While one
+ * of them holds it, the others wait, so none can change the answer halfway through.
+ * Released automatically when the transaction ends.
+ */
+export async function lockConversation(tx: DbClient, conversationId: string): Promise<void> {
+  await tx.query(`SELECT pg_advisory_xact_lock(hashtextextended('conv:' || $1::text, 0))`, [
+    conversationId,
+  ]);
 }

@@ -1,12 +1,14 @@
-import { config } from '../../src/config.js';
-import { createPool, type Pool } from '../../src/db/pool.js';
-import { seed } from '../../src/db/seed.js';
+import type pg from 'pg';
+import { db } from '../../src/db.js';
+import { seed } from '../../src/scripts/seed.js';
 
-export { SEED, SEED_LEADS } from '../../src/db/seed.js';
+export { SEED, SEED_LEADS } from '../../src/scripts/seed.js';
 
-/** A pool on the test database. Each test file creates one and ends it in afterAll. */
+type Pool = pg.Pool;
+
+/** The shared pool, pointed at the test database by vitest.config.ts. End it in afterAll. */
 export function testPool(): Pool {
-  return createPool(config.DATABASE_URL);
+  return db;
 }
 
 // Every table holding data (not schema_migrations). Kept in one place so a new table can't be

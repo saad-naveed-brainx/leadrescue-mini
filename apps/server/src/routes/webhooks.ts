@@ -1,9 +1,8 @@
 import express, { Router, type RequestHandler } from 'express';
-import { config } from '../../config.js';
-import type { Pool } from '../../db/pool.js';
-import { AppError } from '../../http/errors.js';
-import { TwilioInbound, handleInboundSms } from './inbound.js';
-import { type WebhookParams, isValidTwilioSignature } from './twilioSignature.js';
+import { config } from '../config.js';
+import { AppError } from '../middleware/errors.js';
+import { TwilioInbound, handleInboundSms } from '../services/inboundSms.js';
+import { type WebhookParams, isValidTwilioSignature } from '../utils/twilioSignature.js';
 
 /**
  * The parsed form body, checked to be what express.urlencoded produces: names mapped to a string,
@@ -36,23 +35,20 @@ export function requireTwilioSignature(authToken: string, publicBaseUrl: string)
   };
 }
 
-export function webhooksRouter(pool: Pool): Router {
-  const router = Router();
-  router.use(
-    '/webhooks/twilio',
-    // Twilio posts form-encoded bodies; flat parsing is all it needs.
-    express.urlencoded({ extended: false, limit: '64kb' }),
-    requireTwilioSignature(config.TWILIO_AUTH_TOKEN, config.PUBLIC_BASE_URL),
-  );
+export const webhooksRouter = Router();
 
-  router.post('/webhooks/twilio/inbound', async (req, res) => {
-    const params = formParams(req.body);
-    const msg = TwilioInbound.parse(params);
-    // Everything is stored and any reply is queued before we answer, so a 200 means "safe".
-    // A failure answers 500 and Twilio retries; the retry is deduplicated by the receipt.
-    await handleInboundSms(pool, msg, params);
-    res.type('text/xml').send(EMPTY_TWIML);
-  });
+webhooksRouter.use(
+  '/webhooks/twilio',
+  // Twilio posts form-encoded bodies; flat parsing is all it needs.
+  express.urlencoded({ extended: false, limit: '64kb' }),
+  requireTwilioSignature(config.TWILIO_AUTH_TOKEN, config.PUBLIC_BASE_URL),
+);
 
-  return router;
-}
+webhooksRouter.post('/webhooks/twilio/inbound', async (req, res) => {
+  const params = formParams(req.body);
+  const msg = TwilioInbound.parse(params);
+  // Everything is stored and any reply is queued before we answer, so a 200 means "safe".
+  // A failure answers 500 and Twilio retries; the retry is deduplicated by the receipt.
+  await handleInboundSms(msg, params, req.requestId);
+  res.type('text/xml').send(EMPTY_TWIML);
+});

@@ -1,7 +1,6 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Pool, PoolClient } from './pool.js';
-import { withTx } from './pool.js';
+import type pg from 'pg';
 
 // All seed data is fictional. 555-0100..0199 numbers are reserved for fiction in North America,
 // and .test domains can never be real addresses.
@@ -131,7 +130,7 @@ export const SEED_LEADS: SeedLead[] = [
 ];
 
 /** Inserts the demo tenants, people and leads. Safe to run repeatedly: existing rows are left alone. */
-export async function seed(client: PoolClient): Promise<void> {
+export async function seed(client: pg.PoolClient): Promise<void> {
   for (const org of Object.values(SEED.orgs)) {
     await client.query(
       'INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING',
@@ -173,21 +172,15 @@ export async function seed(client: PoolClient): Promise<void> {
   }
 }
 
-export async function seedDatabase(pool: Pool): Promise<void> {
-  await withTx(pool, seed);
-}
-
-// CLI: `npm run seed`
+// Runs only when started from the command line (`npm run seed`), not when a test imports this file.
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
-  const { config } = await import('../config.js');
-  const { createPool } = await import('./pool.js');
-  const pool = createPool(config.DATABASE_URL);
+  const { db, withTransaction } = await import('../db.js');
   try {
-    await seedDatabase(pool);
+    await withTransaction(seed);
     console.log(
       `seed: 2 organizations, ${Object.keys(SEED.users).length} users, ${SEED_LEADS.length} leads (existing rows kept)`,
     );
   } finally {
-    await pool.end();
+    await db.end();
   }
 }

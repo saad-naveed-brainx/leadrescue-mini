@@ -3,14 +3,14 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { TEST_DATABASE_URL } from './testDatabaseUrl.js';
-import { createPool } from '../src/db/pool.js';
-import { runMigrations } from '../src/db/migrate.js';
+import pg from 'pg';
+import { runMigrations } from '../src/scripts/migrate.js';
 
 // Runs inside a throwaway schema so it never touches the real test schema.
 const SCHEMA = 'migrate_runner_test';
 const url = new URL(TEST_DATABASE_URL);
 url.searchParams.set('options', `-c search_path=${SCHEMA}`);
-const pool = createPool(url.toString());
+const pool = new pg.Pool({ connectionString: url.toString() });
 
 let dir: string;
 beforeEach(async () => {

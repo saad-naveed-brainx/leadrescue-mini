@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import request from 'supertest';
 import type { Express } from 'express';
-import { computeTwilioSignature } from '../../src/modules/webhooks/twilioSignature.js';
+import { computeTwilioSignature } from '../../src/utils/twilioSignature.js';
 
 // Must match vitest.config.ts.
 const TOKEN = 'test-only-twilio-token-0000';

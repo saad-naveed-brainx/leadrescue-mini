@@ -1,13 +1,11 @@
 import { normalizePhone } from '@lr/shared';
 import { z } from 'zod';
-import { lockConversationForTx } from '../../db/locks.js';
-import { type Pool, withTx } from '../../db/pool.js';
-import type { Queryable } from '../../db/queryable.js';
-import { logger } from '../../http/logger.js';
-import { currentRequestId } from '../../http/requestContext.js';
-import { cancelPendingJobs, enqueueJob } from '../../queue/enqueue.js';
-import { recordAudit } from '../audit/repo.js';
-import { type Keyword, classifyKeyword } from './keywords.js';
+import { type DbClient, withTransaction } from '../db.js';
+import { logger } from '../logger.js';
+import { type Keyword, classifyKeyword } from '../utils/keywords.js';
+import { recordAudit } from './audit.js';
+import { lockConversation } from './conversations.js';
+import { cancelPendingJobs, enqueueJob } from './jobs.js';
 
 /** The fields of Twilio's inbound-message webhook we use. Twilio sends many more; they're kept in the receipt. */
 export const TwilioInbound = z.object({
@@ -42,17 +40,17 @@ export type InboundOutcome =
  * is still running waits on that unique index, then sees the committed receipt and stops.
  */
 export async function handleInboundSms(
-  pool: Pool,
   msg: TwilioInbound,
   rawPayload: Record<string, unknown>,
+  requestId: string,
 ): Promise<InboundOutcome> {
-  const result = await withTx(pool, async (tx) => {
+  const result = await withTransaction(async (tx) => {
     const receipt = await tx.query<{ id: string }>(
       `INSERT INTO webhook_receipts (provider, provider_event_id, outcome, payload, correlation_id)
        VALUES ('twilio', $1, 'processed', $2, $3)
        ON CONFLICT (provider, provider_event_id) DO NOTHING
        RETURNING id`,
-      [msg.MessageSid, rawPayload, currentRequestId() ?? null],
+      [msg.MessageSid, rawPayload, requestId],
     );
     const receiptId = receipt.rows[0]?.id;
     if (!receiptId) return { outcome: 'duplicate' } as const;
@@ -127,9 +125,9 @@ export async function handleInboundSms(
 
     let aiReplyJobId: string | null = null;
     if (keyword === 'opt_out') {
-      await optOut(tx, orgId, conversation.id, fromE164, message.id, msg.Body);
+      await optOut(tx, orgId, conversation.id, fromE164, message.id, msg.Body, requestId);
     } else if (keyword === 'opt_in') {
-      await optIn(tx, orgId, conversation.id, fromE164, message.id);
+      await optIn(tx, orgId, conversation.id, fromE164, message.id, requestId);
     } else if (keyword === null && conversation.mode === 'auto') {
       // Cheap early check only; the send step re-checks everything under the conversation lock.
       if (!(await isOptedOut(tx, orgId, fromE164))) {
@@ -139,6 +137,7 @@ export async function handleInboundSms(
           type: 'ai_reply',
           payload: { inboundMessageId: message.id },
           dedupeKey: `ai_reply:${message.id}`,
+          requestId,
         });
       }
     }
@@ -158,7 +157,7 @@ export async function handleInboundSms(
   });
 
   // Ids only: phone numbers and message text never go to the logs.
-  logger.info({ messageSid: msg.MessageSid, ...withoutPii(result) }, 'inbound sms');
+  logger.info({ requestId, messageSid: msg.MessageSid, ...withoutPii(result) }, 'inbound sms');
   return result;
 }
 
@@ -168,7 +167,7 @@ function withoutPii(r: InboundOutcome) {
     : r;
 }
 
-async function isOptedOut(tx: Queryable, orgId: string, phone: string): Promise<boolean> {
+async function isOptedOut(tx: DbClient, orgId: string, phone: string): Promise<boolean> {
   const { rowCount } = await tx.query(
     `SELECT 1 FROM opt_outs WHERE org_id = $1 AND phone_e164 = $2 AND channel = 'sms' AND revoked_at IS NULL`,
     [orgId, phone],
@@ -177,16 +176,17 @@ async function isOptedOut(tx: Queryable, orgId: string, phone: string): Promise<
 }
 
 async function optOut(
-  tx: Queryable,
+  tx: DbClient,
   orgId: string,
   conversationId: string,
   phone: string,
   messageId: string,
   body: string,
+  requestId: string,
 ) {
   // Same lock as the send step: a reply being sent right now finishes first, and every send that
   // checks after this commits sees the opt-out.
-  await lockConversationForTx(tx, conversationId);
+  await lockConversation(tx, conversationId);
   const inserted = await tx.query(
     `INSERT INTO opt_outs (org_id, phone_e164, channel, keyword, source_message_id)
      VALUES ($1, $2, 'sms', $3, $4)
@@ -204,17 +204,19 @@ async function optOut(
     targetType: 'conversation',
     targetId: conversationId,
     metadata: { channel: 'sms', cancelledJobs: cancelled },
+    requestId,
   });
 }
 
 async function optIn(
-  tx: Queryable,
+  tx: DbClient,
   orgId: string,
   conversationId: string,
   phone: string,
   messageId: string,
+  requestId: string,
 ) {
-  await lockConversationForTx(tx, conversationId);
+  await lockConversation(tx, conversationId);
   const { rowCount } = await tx.query(
     `UPDATE opt_outs SET revoked_at = now(), revoked_by_message_id = $3
       WHERE org_id = $1 AND phone_e164 = $2 AND channel = 'sms' AND revoked_at IS NULL`,
@@ -228,6 +230,7 @@ async function optIn(
       targetType: 'conversation',
       targetId: conversationId,
       metadata: { channel: 'sms' },
+      requestId,
     });
   }
 }
