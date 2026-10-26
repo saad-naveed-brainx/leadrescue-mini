@@ -5,6 +5,7 @@ import { config } from '../config.js';
 import type { Pool } from '../db/pool.js';
 import { auditRouter } from '../modules/audit/routes.js';
 import { leadsRouter } from '../modules/leads/routes.js';
+import { webhooksRouter } from '../modules/webhooks/routes.js';
 import { errorHandler, notFoundHandler } from './errors.js';
 import { healthRouter } from './health.js';
 import { logger } from './logger.js';
@@ -35,6 +36,7 @@ export function createApp({ pool }: AppDeps): express.Express {
   app.use(meRouter(pool));
   app.use(leadsRouter(pool));
   app.use(auditRouter(pool));
+  app.use(webhooksRouter(pool));
 
   app.use(notFoundHandler);
   app.use(errorHandler);

@@ -10,7 +10,8 @@
     "migrate": "tsx src/db/migrate.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "seed": "tsx src/db/seed.ts"
+    "seed": "tsx src/db/seed.ts",
+    "send-inbound": "tsx src/scripts/sendInbound.ts"
   },
   "dependencies": {
     "@lr/shared": "^0.0.0",

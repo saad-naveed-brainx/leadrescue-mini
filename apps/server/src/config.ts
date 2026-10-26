@@ -15,7 +15,7 @@ const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   API_PORT: z.coerce.number().int().positive().default(4000),
-  DATABASE_URL: z.string().url(),
+  DATABASE_URL: z.url(),
   // 'local' = the documented test-identity login (see auth/localJwt.ts). The only mode for now.
   AUTH_MODE: z.enum(['local']).default('local'),
   AUTH_JWT_SECRET: z.string().min(32, 'must be at least 32 characters'),
@@ -24,6 +24,15 @@ const EnvSchema = z.object({
     .int()
     .positive()
     .default(8 * 3600),
+  // Verifies that inbound webhooks were signed by Twilio. Any value works with the mock; a real
+  // deployment uses the Twilio account's auth token.
+  TWILIO_AUTH_TOKEN: z.string().min(16, 'must be at least 16 characters'),
+  // The address Twilio calls, exactly as configured in Twilio. Signatures cover the full URL, and
+  // behind a proxy the Host header can't be trusted to rebuild it.
+  PUBLIC_BASE_URL: z
+    .url()
+    .default('http://localhost:4000')
+    .transform((u) => u.replace(/\/+$/, '')),
 });
 
 export type Config = z.infer<typeof EnvSchema>;
