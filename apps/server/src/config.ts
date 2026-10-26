@@ -36,6 +36,9 @@ export const config = {
   // this setting (never from the request's Host header, which a caller could fake).
   PUBLIC_BASE_URL: (process.env.PUBLIC_BASE_URL ?? 'http://localhost:4000').replace(/\/+$/, ''),
 
+  // The address of our web app. Browsers only let pages from this address read API answers (CORS).
+  WEB_ORIGIN: (process.env.WEB_ORIGIN ?? 'http://localhost:5173').replace(/\/+$/, ''),
+
   // How long after an AI reply to send the one "just checking in" text if the customer stays
   // quiet. 24 hours normally; set it to 30 in .env to watch it happen in a demo.
   FOLLOW_UP_DELAY_SECONDS: Number(process.env.FOLLOW_UP_DELAY_SECONDS ?? 24 * 60 * 60),
@@ -49,8 +52,12 @@ if (!['development', 'test', 'production'].includes(config.NODE_ENV)) {
   // A typo like "prod" must not slip past the production check below.
   throw new Error('NODE_ENV must be development, test or production');
 }
-if (!URL.canParse(config.DATABASE_URL) || !URL.canParse(config.PUBLIC_BASE_URL)) {
-  throw new Error('DATABASE_URL and PUBLIC_BASE_URL must be full URLs');
+if (
+  !URL.canParse(config.DATABASE_URL) ||
+  !URL.canParse(config.PUBLIC_BASE_URL) ||
+  !URL.canParse(config.WEB_ORIGIN)
+) {
+  throw new Error('DATABASE_URL, PUBLIC_BASE_URL and WEB_ORIGIN must be full URLs');
 }
 if (config.AUTH_JWT_SECRET.length < 32) {
   throw new Error('AUTH_JWT_SECRET must be at least 32 characters');

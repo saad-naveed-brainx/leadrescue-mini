@@ -1,4 +1,7 @@
+import cors from 'cors';
 import express from 'express';
+import helmet from 'helmet';
+import { config } from './config.js';
 import { errorHandler, notFoundHandler } from './middleware/errors.js';
 import { requestId } from './middleware/requestId.js';
 import { requestLogger } from './middleware/requestLogger.js';
@@ -16,6 +19,12 @@ app.disable('x-powered-by'); // don't advertise which framework we run
 // 1. Steps every request goes through.
 app.use(requestId);
 app.use(requestLogger);
+// Standard security headers (no MIME sniffing, no framing, HTTPS-only hint, and so on).
+app.use(helmet());
+// Only our own web app may read API answers in a browser. Other sites' pages get no CORS headers,
+// so the browser blocks them. Server-to-server callers (Twilio, curl) send no Origin and are
+// unaffected. Logins travel in the Authorization header, not cookies, so no credentials mode.
+app.use(cors({ origin: [config.WEB_ORIGIN], methods: ['GET', 'POST', 'PATCH', 'DELETE'] }));
 app.use(express.json({ limit: '100kb' }));
 
 // 2. The routes.
