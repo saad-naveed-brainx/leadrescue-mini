@@ -6,7 +6,9 @@ import {
   completeJob,
   enqueueJob,
   failJob,
+  listDeadJobs,
   reapExpiredJobs,
+  retryDeadJob,
 } from '../src/services/jobs.js';
 import { SEED, createConversation, leadIdByName, resetDb } from './helpers/db.js';
 
@@ -150,5 +152,37 @@ describe('rescuing jobs from a crashed worker', () => {
     await db.query(`UPDATE workflow_jobs SET locked_until = now() - interval '1 second'`);
     await reapExpiredJobs();
     expect((await jobRow(job!.id))!.status).toBe('dead');
+  });
+});
+
+describe('the dead-job tool (npm run jobs)', () => {
+  async function makeDeadJob() {
+    await addJobs(1);
+    await db.query('UPDATE workflow_jobs SET max_attempts = 1');
+    const [job] = await claimJobs('worker-a', 1, 60);
+    await failJob(job!, 'worker-a', new Error('AI down'));
+    return job!.id;
+  }
+
+  it('lists dead jobs with why they failed', async () => {
+    const id = await makeDeadJob();
+    expect(await listDeadJobs()).toMatchObject([{ id, type: 'ai_reply', lastError: 'AI down' }]);
+  });
+
+  it('retry puts a dead job back in the queue with fresh attempts, and records who asked', async () => {
+    const id = await makeDeadJob();
+    expect(await retryDeadJob(id, 'saad')).toBe(true);
+    expect(await jobRow(id)).toMatchObject({ status: 'pending', attempts: 0, later: false });
+    const audit = await db.query(
+      `SELECT metadata->>'requestedBy' AS by FROM audit_events WHERE action = 'job.retried'`,
+    );
+    expect(audit.rows).toEqual([{ by: 'saad' }]);
+  });
+
+  it('refuses to "retry" a job that is not dead', async () => {
+    await addJobs(1);
+    const { rows } = await db.query<{ id: string }>('SELECT id FROM workflow_jobs');
+    expect(await retryDeadJob(rows[0]!.id, 'saad')).toBe(false);
+    expect(await jobRow(rows[0]!.id)).toMatchObject({ status: 'pending' });
   });
 });

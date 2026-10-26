@@ -1,4 +1,6 @@
+import { config } from '../config.js';
 import { logger } from '../logger.js';
+import { crashHere } from '../utils/testHooks.js';
 import { handleAiReply } from './aiReply.js';
 import { handleFollowUp } from './followUp.js';
 import {
@@ -12,8 +14,6 @@ import {
   reapExpiredJobs,
 } from './jobs.js';
 
-// How long a worker may hold a job before others assume it crashed and take it over.
-const LEASE_SECONDS = 60;
 const BATCH_SIZE = 5;
 
 // Which function handles which kind of job.
@@ -46,7 +46,8 @@ export async function runJob(job: Job, workerId: string): Promise<void> {
  *  Returns how many jobs it ran. */
 export async function runWorkerOnce(workerId: string): Promise<number> {
   await reapExpiredJobs();
-  const jobs = await claimJobs(workerId, BATCH_SIZE, LEASE_SECONDS);
+  const jobs = await claimJobs(workerId, BATCH_SIZE, config.WORKER_LEASE_SECONDS);
+  if (jobs.length > 0) crashHere('after_claim'); // test-only: see utils/testHooks.ts
   for (const job of jobs) {
     await runJob(job, workerId);
   }

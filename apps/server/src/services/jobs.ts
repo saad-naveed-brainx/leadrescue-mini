@@ -211,3 +211,54 @@ export async function queueStats() {
   const count = (status: string) => rows.find((r) => r.status === status)?.n ?? 0;
   return { pending: count('pending'), running: count('running'), dead: count('dead') };
 }
+
+// ─────────────────────────────── dead jobs (npm run jobs) ───────────────────────────────
+
+export interface DeadJob {
+  id: string;
+  orgId: string;
+  type: JobType;
+  attempts: number;
+  lastError: string | null;
+  finishedAt: Date;
+}
+
+/** Jobs that failed for good, newest first. */
+export async function listDeadJobs(): Promise<DeadJob[]> {
+  const { rows } = await db.query<DeadJob>(
+    `SELECT id, org_id AS "orgId", type, attempts, last_error AS "lastError",
+            finished_at AS "finishedAt"
+       FROM workflow_jobs WHERE status = 'dead'
+      ORDER BY finished_at DESC`,
+  );
+  return rows;
+}
+
+/**
+ * Gives a dead job a fresh start: back to waiting, with a full set of attempts. Recorded in the
+ * audit history with who asked. Returns false if there is no dead job with this id. Safe for
+ * replies: the send gate still refuses anything already sent, opted out or taken over.
+ */
+export async function retryDeadJob(jobId: string, requestedBy: string): Promise<boolean> {
+  return withTransaction(async (tx) => {
+    const { rows } = await tx.query<{ orgId: string; type: JobType }>(
+      `UPDATE workflow_jobs
+          SET status = 'pending', attempts = 0, run_at = now(), finished_at = NULL,
+              updated_at = now()
+        WHERE id = $1 AND status = 'dead'
+        RETURNING org_id AS "orgId", type`,
+      [jobId],
+    );
+    const job = rows[0];
+    if (!job) return false;
+    await recordAudit(tx, {
+      orgId: job.orgId,
+      actorType: 'system',
+      action: 'job.retried',
+      targetType: 'job',
+      targetId: jobId,
+      metadata: { type: job.type, requestedBy },
+    });
+    return true;
+  });
+}

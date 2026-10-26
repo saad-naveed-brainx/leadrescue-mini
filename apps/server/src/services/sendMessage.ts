@@ -2,6 +2,7 @@ import type pg from 'pg';
 import { config } from '../config.js';
 import { db, transactionOn } from '../db.js';
 import { logger } from '../logger.js';
+import { crashHere } from '../utils/testHooks.js';
 import { recordAudit } from './audit.js';
 import { CONVERSATION_LOCK_KEY, reasonToSkip } from './conversations.js';
 import { enqueueJob } from './jobs.js';
@@ -125,6 +126,8 @@ async function sendWhileLocked(conn: pg.PoolClient, msg: AutomatedMessage): Prom
       )
     ).rows[0]!.id;
 
+  crashHere('after_intent'); // test-only: see utils/testHooks.ts
+
   // If this throws, the message stays 'sending' and the job is retried; step 2 then checks with
   // the SMS service before trying again, so the customer never gets it twice.
   const { sid } = await mockSms.send({
@@ -133,6 +136,7 @@ async function sendWhileLocked(conn: pg.PoolClient, msg: AutomatedMessage): Prom
     body: msg.body,
     clientRef: msg.idempotencyKey,
   });
+  crashHere('after_provider_send'); // test-only: the text went out, but we never wrote "sent"
   await markSent(conn, msg, messageId, sid);
   return { outcome: 'sent', messageId };
 }

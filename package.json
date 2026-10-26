@@ -21,7 +21,8 @@
     "db:up": "docker compose up -d db",
     "seed": "npm run seed -w @lr/server",
     "db:setup": "npm run migrate && npm run seed",
-    "send-inbound": "npm run send-inbound -w @lr/server --"
+    "send-inbound": "npm run send-inbound -w @lr/server --",
+    "jobs": "npm run jobs -w @lr/server --"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

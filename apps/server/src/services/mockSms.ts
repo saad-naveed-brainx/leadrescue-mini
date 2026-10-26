@@ -1,5 +1,7 @@
 import { randomBytes } from 'node:crypto';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { db } from '../db.js';
+import { mockSmsDelayMs } from '../utils/testHooks.js';
 
 // The pretend text-message service, standing in for Twilio. Nothing is sent to a real phone: each
 // "sent" text is written to mock_provider_messages, which plays the part of Twilio's own records.
@@ -16,6 +18,8 @@ export interface SmsToSend {
 
 async function send(sms: SmsToSend): Promise<{ sid: string }> {
   // A real provider call would have a timeout of a few seconds here.
+  const delay = mockSmsDelayMs(); // test-only: see utils/testHooks.ts
+  if (delay > 0) await sleep(delay);
   const sid = `SM${randomBytes(16).toString('hex')}`;
   await db.query(
     `INSERT INTO mock_provider_messages (sid, client_ref, from_e164, to_e164, body)

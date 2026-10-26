@@ -10,8 +10,8 @@ import { runWorkerOnce } from './services/worker.js';
 const WORKER_ID = `worker-${hostname()}-${process.pid}`;
 let stopping = false;
 
-// Ctrl-C or Docker stopping it: finish the current job, then stop. A job cut off by a hard kill is
-// rescued by another worker once its lease runs out.
+// Ctrl-C or Docker stopping it: finish the jobs it has already taken, then stop. A job cut off by a
+// hard kill is rescued by the next worker once its lease runs out (WORKER_LEASE_SECONDS).
 process.on('SIGTERM', () => (stopping = true));
 process.on('SIGINT', () => (stopping = true));
 
