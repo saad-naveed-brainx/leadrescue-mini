@@ -17,7 +17,9 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "check": "npm run typecheck && npm run lint && npm test",
-    "db:up": "docker compose up -d db"
+    "db:up": "docker compose up -d db",
+    "seed": "npm run seed -w @lr/server",
+    "db:setup": "npm run migrate && npm run seed"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
