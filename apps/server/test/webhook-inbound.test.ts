@@ -4,6 +4,7 @@ import { testApp } from './helpers/app.js';
 import { bearer } from './helpers/auth.js';
 import { SEED, resetDb } from './helpers/db.js';
 import { newSid, postInbound } from './helpers/twilio.js';
+import { drainQueue, providerSends } from './helpers/worker.js';
 
 const { pool, app } = testApp();
 afterAll(() => pool.end());
@@ -197,6 +198,10 @@ describe('duplicate deliveries (SOW demo 2)', () => {
     expect(await snapshot()).toEqual(after1);
     expect(await count('messages')).toBe(1);
     expect(await count('workflow_jobs', `type = 'ai_reply'`)).toBe(1);
+
+    // And once the worker has run: exactly one reply actually sent.
+    await drainQueue();
+    expect(await providerSends()).toHaveLength(1);
   });
 
   it('five copies arriving at the same moment still give exactly one of everything', async () => {
@@ -207,6 +212,9 @@ describe('duplicate deliveries (SOW demo 2)', () => {
     expect(await count('leads', 'phone_e164 = $1', [STRANGER])).toBe(1);
     expect(await count('messages')).toBe(1);
     expect(await count('workflow_jobs', `type = 'ai_reply'`)).toBe(1);
+
+    await drainQueue();
+    expect(await providerSends()).toHaveLength(1);
   });
 
   it('a failed attempt leaves nothing behind, so Twilio’s retry is processed normally', async () => {

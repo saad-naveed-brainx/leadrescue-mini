@@ -70,7 +70,9 @@ export async function getLeadConversation(
  * Released automatically when the transaction ends.
  */
 export async function lockConversation(tx: DbClient, conversationId: string): Promise<void> {
-  await tx.query(`SELECT pg_advisory_xact_lock(hashtextextended('conv:' || $1::text, 0))`, [
-    conversationId,
-  ]);
+  await tx.query(`SELECT pg_advisory_xact_lock(${CONVERSATION_LOCK_KEY})`, [conversationId]);
 }
+
+/** Turns a conversation id ($1) into the number Postgres locks on. Shared by both lock styles, so
+ *  the send gate and STOP / Manual / closing really wait for each other. */
+export const CONVERSATION_LOCK_KEY = `hashtextextended('conv:' || $1::text, 0)`;

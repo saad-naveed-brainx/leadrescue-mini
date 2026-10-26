@@ -11,7 +11,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "seed": "tsx src/scripts/seed.ts",
-    "send-inbound": "tsx src/scripts/sendInbound.ts"
+    "send-inbound": "tsx src/scripts/sendInbound.ts",
+    "dev:worker": "tsx watch src/worker.ts",
+    "start:worker": "node dist/worker.js"
   },
   "dependencies": {
     "@lr/shared": "^0.0.0",

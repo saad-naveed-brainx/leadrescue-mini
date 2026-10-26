@@ -1,8 +1,10 @@
 import request from 'supertest';
-import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { app } from '../src/app.js';
 import { db } from '../src/db.js';
+import { resetDb } from './helpers/db.js';
 
+beforeAll(() => resetDb(db));
 afterAll(() => db.end());
 // Undo any fake database answers so they can't leak into the next test.
 afterEach(() => vi.restoreAllMocks());
@@ -17,7 +19,8 @@ describe('health endpoints', () => {
   it('reports the database as reachable', async () => {
     const res = await request(app).get('/health/ready');
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ status: 'ok', db: 'ok' });
+    expect(res.body).toMatchObject({ status: 'ok', db: 'ok' });
+    expect(res.body.queue).toEqual({ pending: 0, running: 0, dead: 0 });
   });
 
   it('reports 503 when the database is unreachable', async () => {
@@ -26,6 +29,17 @@ describe('health endpoints', () => {
     const res = await request(app).get('/health/ready');
     expect(res.status).toBe(503);
     expect(res.body.db).toBe('unreachable');
+  });
+});
+
+describe('queue health', () => {
+  it('a queue problem is reported as such, not as the database being down', async () => {
+    vi.spyOn(db, 'query')
+      .mockResolvedValueOnce({} as never) // SELECT 1 works
+      .mockRejectedValueOnce(new Error('relation "workflow_jobs" does not exist'));
+    const res = await request(app).get('/health/ready');
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ status: 'unavailable', db: 'ok', queue: 'unavailable' });
   });
 });
 

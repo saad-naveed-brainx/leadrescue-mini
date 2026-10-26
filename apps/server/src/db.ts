@@ -19,14 +19,24 @@ export type DbClient = pg.Pool | pg.PoolClient;
 export async function withTransaction<T>(work: (tx: pg.PoolClient) => Promise<T>): Promise<T> {
   const tx = await db.connect();
   try {
-    await tx.query('BEGIN');
-    const result = await work(tx);
-    await tx.query('COMMIT');
-    return result;
-  } catch (err) {
-    await tx.query('ROLLBACK').catch(() => {});
-    throw err;
+    return await transactionOn(tx, work);
   } finally {
     tx.release();
+  }
+}
+
+/** The same, on a connection you already hold (the send gate keeps its own for the lock). */
+export async function transactionOn<T>(
+  conn: pg.PoolClient,
+  work: (tx: pg.PoolClient) => Promise<T>,
+): Promise<T> {
+  await conn.query('BEGIN');
+  try {
+    const result = await work(conn);
+    await conn.query('COMMIT');
+    return result;
+  } catch (err) {
+    await conn.query('ROLLBACK').catch(() => {});
+    throw err;
   }
 }
