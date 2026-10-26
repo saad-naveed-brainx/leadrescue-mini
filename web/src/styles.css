@@ -1,95 +1,185 @@
-/* Plain styles for a small internal tool: readable, no framework. */
+/* Plain styles for a small internal tool: one accent colour, white cards, no framework. */
 :root {
+  --accent: #4f46e5;
+  --accent-dark: #4338ca;
+  --text: #1f2937;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --bg: #f3f4f6;
   font-family: system-ui, sans-serif;
-  color: #1f2328;
-  background: #f6f8fa;
+  color: var(--text);
+  background: var(--bg);
 }
 body {
   margin: 0;
 }
 h1 {
-  font-size: 1.4rem;
+  font-size: 1.15rem;
+  margin: 24px 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 h2 {
-  font-size: 1rem;
-  margin: 0 0 8px;
+  font-size: 0.95rem;
+  margin: 0 0 4px;
   width: 100%;
 }
+
+/* ── top bar ── */
 .topbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
+  gap: 12px;
+  padding: 12px 24px;
   background: #fff;
-  border-bottom: 1px solid #d0d7de;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.75rem;
+}
+.topbar label {
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 .page {
-  max-width: 960px;
+  max-width: 1040px;
   margin: 0 auto;
-  padding: 16px;
+  padding: 20px 16px 40px;
+}
+
+/* ── cards and forms ── */
+.tools {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
 }
 .card {
   background: #fff;
-  border: 1px solid #d0d7de;
-  border-radius: 8px;
-  padding: 12px;
-  margin-bottom: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
 }
 .create-form {
   display: flex;
   flex-wrap: wrap;
+  align-content: flex-start;
   gap: 8px;
+}
+.create-form input {
+  flex: 1;
+  min-width: 140px;
+}
+.grow {
+  flex: 1 1 100% !important;
 }
 input,
 select,
 button {
   font: inherit;
-  padding: 6px 8px;
-  border: 1px solid #d0d7de;
-  border-radius: 6px;
+  font-size: 0.9rem;
+  padding: 7px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
   background: #fff;
+  color: var(--text);
+}
+input:focus,
+select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
 }
 button {
   cursor: pointer;
 }
 button:hover {
-  background: #f3f4f6;
+  background: #f9fafb;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+button.primary:hover {
+  background: var(--accent-dark);
+}
+.outcome {
+  width: 100%;
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #eef2ff;
+  color: #3730a3;
+}
+.muted {
+  color: var(--muted);
+}
+.error {
+  color: #b91c1c;
+  width: 100%;
+  margin: 4px 0 0;
+  font-size: 0.9rem;
+}
+.count {
+  font-size: 0.8rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+/* ── leads table ── */
+.table-wrap {
+  overflow-x: auto;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
 }
 table {
   width: 100%;
   border-collapse: collapse;
-  background: #fff;
-  border: 1px solid #d0d7de;
+}
+th {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  background: #f9fafb;
 }
 th,
 td {
   text-align: left;
-  padding: 8px;
-  border-bottom: 1px solid #eaeef2;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
 }
-.status {
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 0.85rem;
-  background: #eaeef2;
+tbody tr:last-child td {
+  border-bottom: none;
 }
-.status-contacted {
-  background: #ddf4ff;
-}
-.status-qualified {
-  background: #dafbe1;
-}
-.status-closed {
-  background: #f6f8fa;
-  color: #57606a;
-}
-.muted {
-  color: #57606a;
-}
-.error {
-  color: #cf222e;
-  width: 100%;
-  margin: 4px 0 0;
+tbody tr:hover {
+  background: #fafafa;
 }
 .notes-form {
   display: flex;
@@ -97,22 +187,33 @@ td {
 }
 .notes-form input {
   flex: 1;
-  min-width: 0;
+  min-width: 140px;
+}
+.status {
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  border: none;
+  background: #f3f4f6;
 }
 select.status {
-  border: none;
   cursor: pointer;
 }
-.grow {
-  flex: 1;
-  min-width: 160px;
+.status-contacted {
+  background: #dbeafe;
+  color: #1e40af;
 }
-.outcome {
-  width: 100%;
-  margin: 4px 0 0;
+.status-qualified {
+  background: #dcfce7;
+  color: #166534;
 }
+.status-closed {
+  color: var(--muted);
+}
+
+/* ── conversation ── */
 .conversation {
-  margin-top: 16px;
+  margin-top: 20px;
 }
 .conversation-head,
 .mode-row {
@@ -120,49 +221,60 @@ select.status {
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 .mode {
-  padding: 4px 10px;
+  padding: 4px 12px;
   border-radius: 999px;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 600;
 }
 .mode-AI {
-  background: #dafbe1;
+  background: #dcfce7;
+  color: #166534;
 }
 .mode-MANUAL {
-  background: #fff8c5;
+  background: #fef3c7;
+  color: #92400e;
 }
 .messages {
   list-style: none;
-  padding: 0;
+  padding: 16px;
   margin: 0;
   display: grid;
-  gap: 8px;
+  gap: 10px;
+  background: #f9fafb;
+  border-radius: 10px;
 }
 .message {
-  max-width: 80%;
-  padding: 8px 10px;
-  border-radius: 8px;
+  max-width: 75%;
+  padding: 8px 12px;
+  border-radius: 12px;
   display: grid;
   gap: 2px;
+  line-height: 1.4;
 }
 .message-customer {
-  background: #f6f8fa;
+  background: #fff;
+  border: 1px solid var(--border);
   justify-self: start;
+  border-bottom-left-radius: 4px;
 }
 .message-ai {
-  background: #ddf4ff;
+  background: var(--accent);
+  color: #fff;
   justify-self: end;
+  border-bottom-right-radius: 4px;
 }
 .message-author {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   font-weight: 600;
+  opacity: 0.8;
 }
 .message time {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
+  justify-self: end;
 }
-/* On a narrow screen the table scrolls sideways inside its box, not the whole page. */
-.table-wrap {
-  overflow-x: auto;
+.message-ai time {
+  color: #e0e7ff;
 }

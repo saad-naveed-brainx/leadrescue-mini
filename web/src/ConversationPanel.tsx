@@ -61,11 +61,19 @@ export function ConversationPanel({
               {conversation.mode === 'AI' ? 'AI is replying' : 'MANUAL: a person has taken over'}
             </span>
             {conversation.mode === 'AI' ? (
-              <button disabled={switching} onClick={() => void switchMode('MANUAL')}>
+              <button
+                className="primary"
+                disabled={switching}
+                onClick={() => void switchMode('MANUAL')}
+              >
                 Take over (MANUAL)
               </button>
             ) : (
-              <button disabled={switching} onClick={() => void switchMode('AI')}>
+              <button
+                className="primary"
+                disabled={switching}
+                onClick={() => void switchMode('AI')}
+              >
                 Hand back to AI
               </button>
             )}

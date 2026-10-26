@@ -47,9 +47,13 @@ export function LeadsPage({ user }: { user: string }) {
 
   return (
     <>
-      <h1>Leads</h1>
-      <CreateLeadForm user={user} onCreated={loadLeads} />
-      <SimulateSmsPanel onSent={(to, result) => void onSmsSent(to, result)} />
+      <div className="tools">
+        <CreateLeadForm user={user} onCreated={loadLeads} />
+        <SimulateSmsPanel onSent={(to, result) => void onSmsSent(to, result)} />
+      </div>
+      <h1>
+        Leads <span className="count">{leads.length}</span>
+      </h1>
       {error && <p className="error">{error}</p>}
       {leads.length === 0 ? (
         <p className="muted">No leads yet.</p>
@@ -138,7 +142,9 @@ function CreateLeadForm({ user, onCreated }: { user: string; onCreated: () => Pr
         value={notes}
         onChange={(e) => setNotes(e.target.value)}
       />
-      <button type="submit">Add lead</button>
+      <button className="primary" type="submit">
+        Add lead
+      </button>
       {error && <p className="error">{error}</p>}
     </form>
   );

@@ -73,7 +73,9 @@ export function SimulateSmsPanel({
         value={body}
         onChange={(e) => setBody(e.target.value)}
       />
-      <button type="submit">Send SMS</button>
+      <button className="primary" type="submit">
+        Send SMS
+      </button>
       <button
         type="button"
         disabled={!lastSent}

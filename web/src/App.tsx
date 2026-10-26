@@ -10,7 +10,9 @@ export function App() {
   return (
     <div>
       <header className="topbar">
-        <strong>LeadRescue Mini</strong>
+        <strong className="brand">
+          <span className="brand-mark">LR</span> LeadRescue Mini
+        </strong>
         <label>
           Signed in as{' '}
           <select value={user} onChange={(e) => setUser(e.target.value)}>
