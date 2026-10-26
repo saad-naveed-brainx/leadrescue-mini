@@ -88,7 +88,8 @@ export function LeadsPage({ user }: { user: string }) {
           key={openConversationId}
           user={user}
           conversationId={openConversationId}
-          title={openLead ? (openLead.name ?? openLead.phone) : 'customer'}
+          title={openLead?.name ?? openLead?.phone ?? 'Customer'}
+          subtitle={openLead?.name ? openLead.phone : 'Lead from SMS (no name yet)'}
           reloadKey={reloadKey}
           onClose={() => setOpenConversationId(null)}
         />
