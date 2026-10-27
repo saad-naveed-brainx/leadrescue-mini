@@ -4,24 +4,62 @@ import { ConversationPanel } from './ConversationPanel';
 import { LeadRow } from './LeadRow';
 import { type InboundResult, SimulateSmsPanel } from './SimulateSmsPanel';
 
-// The current company's leads, newest first, a form to add one, the simulated-SMS panel, and
-// the open conversation (if any).
+/** Leads per page. The API pages with a cursor: "Load more" asks for the leads after the last one. */
+const PAGE_SIZE = 25;
+
+interface LeadPage {
+  leads: Lead[];
+  nextCursor: string | null;
+}
+
+// The current company's leads, newest first (one page at a time, with an optional status filter),
+// a form to add one, the simulated-SMS panel, and the open conversation (if any).
 export function LeadsPage({ user }: { user: string }) {
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [statusFilter, setStatusFilter] = useState<Lead['status'] | ''>('');
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [openConversationId, setOpenConversationId] = useState<string | null>(null);
   // Bumped after a simulated SMS, so the open conversation fetches its messages again.
   const [reloadKey, setReloadKey] = useState(0);
 
+  const listUrl = useCallback(
+    (cursor?: string) => {
+      const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
+      if (statusFilter) params.set('status', statusFilter);
+      if (cursor) params.set('cursor', cursor);
+      return `/leads?${params}`;
+    },
+    [statusFilter],
+  );
+
+  // The first page again (after a filter change, a new lead or a new SMS).
   const loadLeads = useCallback(async () => {
     try {
-      const data = await apiFetch<{ leads: Lead[] }>(user, '/leads');
-      setLeads(data.leads);
+      const page = await apiFetch<LeadPage>(user, listUrl());
+      setLeads(page.leads);
+      setNextCursor(page.nextCursor);
       setError(null);
     } catch (err) {
       setError((err as Error).message);
     }
-  }, [user]);
+  }, [user, listUrl]);
+
+  // The next page, added below the leads already shown.
+  async function loadMore() {
+    if (!nextCursor) return;
+    setLoadingMore(true);
+    try {
+      const page = await apiFetch<LeadPage>(user, listUrl(nextCursor));
+      setLeads((current) => [...current, ...page.leads]);
+      setNextCursor(page.nextCursor);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   useEffect(() => {
     void loadLeads();
@@ -51,12 +89,26 @@ export function LeadsPage({ user }: { user: string }) {
         <CreateLeadForm user={user} onCreated={loadLeads} />
         <SimulateSmsPanel onSent={(to, result) => void onSmsSent(to, result)} />
       </div>
-      <h1>
-        Leads <span className="count">{leads.length}</span>
-      </h1>
+      <div className="list-head">
+        <h1>
+          Leads <span className="count">{leads.length} shown</span>
+        </h1>
+        <label>
+          Status{' '}
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as Lead['status'] | '')}
+          >
+            <option value="">all</option>
+            {LEAD_STATUSES.map((s) => (
+              <option key={s}>{s}</option>
+            ))}
+          </select>
+        </label>
+      </div>
       {error && <p className="error">{error}</p>}
       {leads.length === 0 ? (
-        <p className="muted">No leads yet.</p>
+        <p className="muted">{statusFilter ? `No ${statusFilter} leads.` : 'No leads yet.'}</p>
       ) : (
         <div className="table-wrap">
           <table>
@@ -81,6 +133,13 @@ export function LeadsPage({ user }: { user: string }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+      {nextCursor && (
+        <div className="load-more">
+          <button disabled={loadingMore} onClick={() => void loadMore()}>
+            {loadingMore ? 'Loading…' : 'Load more'}
+          </button>
         </div>
       )}
       {openConversationId && (

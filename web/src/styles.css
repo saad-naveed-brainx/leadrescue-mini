@@ -151,6 +151,21 @@ button.primary:hover {
 }
 
 /* ── leads table ── */
+.list-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.list-head label {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.load-more {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+}
 .table-wrap {
   overflow-x: auto;
   background: #fff;

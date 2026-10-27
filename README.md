@@ -40,14 +40,14 @@ npm run dev:web      # http://localhost:5173
 
 Pick the user at the top right (Alice = Company A, Bob = Company B). Then:
 
-- **Leads:** the company's leads, a form to add one, and each lead's status (saved as soon as you pick it) and notes (Save button; an empty box clears them).
+- **Leads:** the company's leads (25 at a time, with **Load more** and a **status filter**), a form to add one, and each lead's status (saved as soon as you pick it) and notes (Save button; an empty box clears them).
 - **Simulate an incoming SMS:** posts to the webhook as Twilio would. Choose which company's number is texted. **Send again (same messageSid)** repeats the last one, to show it is stored once.
 - **Conversation:** **Open** on a lead shows its messages and the switch between **Take over (MANUAL)** and **Hand back to AI**. Texts that arrive while it is MANUAL are saved with no AI reply. It calls the API through Vite's proxy (`/api/...` → `localhost:4000`), so the API needs no CORS settings.
 
 ### Tests
 
 ```bash
-npm test             # 54 tests against a separate test database
+npm test             # 62 tests against a separate test database
 npm run check        # typecheck + lint + tests
 ```
 
@@ -68,15 +68,15 @@ All data is fictional: 555-01xx numbers are reserved for fiction, and `.test` ad
 
 Every `/leads` and `/conversations` request needs the **`X-Demo-User`** header (see §4). The webhook does not, because Twilio isn't a user.
 
-| Method  | Path                         | What it does                                                                     |
-| ------- | ---------------------------- | -------------------------------------------------------------------------------- |
-| `GET`   | `/leads`                     | Your company's leads, newest first                                               |
-| `POST`  | `/leads`                     | Create a lead: `name`, `phone` (required); `email`, `status`, `notes` (optional) |
-| `GET`   | `/leads/:id`                 | One lead                                                                         |
-| `PATCH` | `/leads/:id`                 | Change `status` and/or `notes` (`null` clears the notes)                         |
-| `POST`  | `/webhooks/twilio/inbound`   | Simulated incoming SMS: `messageSid`, `toNumber`, `fromNumber`, `body`           |
-| `POST`  | `/conversations/:id/handoff` | `{"mode": "MANUAL"}` to take over, `{"mode": "AI"}` to hand back                 |
-| `GET`   | `/conversations/:id`         | The conversation's mode and all its messages, oldest first                       |
+| Method  | Path                         | What it does                                                                                                                            |
+| ------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`   | `/leads`                     | Your company's leads, newest first, one page at a time: `?limit=` (1–100, default 50), `?status=`, `?cursor=` → `{ leads, nextCursor }` |
+| `POST`  | `/leads`                     | Create a lead: `name`, `phone` (required); `email`, `status`, `notes` (optional)                                                        |
+| `GET`   | `/leads/:id`                 | One lead                                                                                                                                |
+| `PATCH` | `/leads/:id`                 | Change `status` and/or `notes` (`null` clears the notes)                                                                                |
+| `POST`  | `/webhooks/twilio/inbound`   | Simulated incoming SMS: `messageSid`, `toNumber`, `fromNumber`, `body`                                                                  |
+| `POST`  | `/conversations/:id/handoff` | `{"mode": "MANUAL"}` to take over, `{"mode": "AI"}` to hand back                                                                        |
+| `GET`   | `/conversations/:id`         | The conversation's mode and all its messages, oldest first                                                                              |
 
 - **Phone numbers** use international format, for example `+12125550100`.
 - **Lead statuses:** `new`, `contacted`, `qualified`, `closed`.
@@ -109,6 +109,18 @@ curl -s -X POST localhost:4000/leads -H "$A" -H "$J" \
 curl -s localhost:4000/leads -H "$A"   # includes Grace Kim
 curl -s localhost:4000/leads -H "$B"   # only Sam Rivera
 ```
+
+**Paging and filtering the list:**
+
+```bash
+curl -s "localhost:4000/leads?limit=2" -H "$A"
+# {"leads":[ ...2 leads... ],"nextCursor":"eyJ0aW1lIjoi..."}     null on the last page
+
+curl -s "localhost:4000/leads?limit=2&cursor=<nextCursor>" -H "$A"   # the next 2
+curl -s "localhost:4000/leads?status=new" -H "$A"                  # only status "new"
+```
+
+The list uses **keyset paging**: the cursor means "continue after this lead" (its time and id), so page 500 is as fast as page 1, and leads added in the meantime don't shift or repeat what you see. Page numbers (`OFFSET`) would make the database read and skip every earlier row: about 0.05 ms vs 13 ms at 90,000 leads in, measured on 100,000 leads. Indexes in `migrations/0004_leads_paging_indexes.sql` match the order exactly, with and without the status filter.
 
 **Update the lead as A; try the same as B:**
 
@@ -262,7 +274,7 @@ Real Twilio signs every webhook. To add it in production:
 - **Handing back to AI doesn't reply by itself** to messages that arrived during MANUAL. Their jobs already finished without sending. The next customer text does get a reply.
 - **Workers look for work every 500 ms** (`WORKER_POLL_MS`) rather than being notified, so a reply can take up to half a second longer to start. PostgreSQL `LISTEN/NOTIFY` would remove that delay.
 - **The mock login is not security** (see §4). There are no roles: any user of a company can do everything in that company.
-- **`GET /leads` returns at most 200 leads**, with no paging, search or filter.
+- **No search** in `GET /leads` (by name or phone), only the status filter. And no protection against two people editing the same lead at once: the last save wins.
 - **No Twilio signature check, rate limiting, security headers or CORS.** These are deliberate omissions for this offline exercise.
 - **The web UI is minimal**: leads, simulated SMS and conversations. An open conversation checks for new messages every 2 seconds; the lead list refreshes after your own actions. It has no automated tests; the API tests cover the rules.
 
@@ -272,7 +284,7 @@ Real Twilio signs every webhook. To add it in production:
 2. **Real authentication** (OIDC tokens) and **roles** (owner/manager/member). Also PostgreSQL row-level security, as a second wall between companies.
 3. **Twilio signature verification**, the real form-encoded payload, rate limits and security headers.
 4. **Customer opt-out (STOP/START)**, honoured by the same lock as the hand-off, and an **audit log** of who switched modes and when.
-5. **Lead list paging and search**, and UI tests.
+5. **Search** in the lead list, a **"changed by someone else"** check when two people edit the same lead (optimistic concurrency), and UI tests.
 6. **Docker Compose for the API too**, so one command starts everything, and CI running `npm run check`.
 
 ---
@@ -283,6 +295,7 @@ Real Twilio signs every webhook. To add it in production:
 migrations/0001_init.sql        tables, keys, uniqueness rules
 migrations/0002_jobs.sql        the job queue table
 migrations/0003_send_status.sql AI reply progress (sending/sent/cancelled), mock provider table
+migrations/0004_leads_paging_indexes.sql  indexes for the paged lead list
 src/server.ts                   starts the API, clean shutdown
 src/worker.ts                   starts a background worker (npm run worker)
 src/app.ts                      middleware and routes, in order

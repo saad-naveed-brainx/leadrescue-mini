@@ -30,6 +30,16 @@ export const LeadUpdateInput = z
   });
 export type LeadUpdateInput = z.infer<typeof LeadUpdateInput>;
 
+/** Query of GET /leads. Unknown query parameters (e.g. tenantId) are refused. */
+export const LeadListQuery = z.strictObject({
+  status: LeadStatus.optional(),
+  /** Leads per page. */
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  /** From the previous page's nextCursor: continue after that lead. */
+  cursor: z.string().max(200).optional(),
+});
+export type LeadListQuery = z.infer<typeof LeadListQuery>;
+
 /** Body of POST /conversations/:id/handoff. */
 export const HandoffInput = z.strictObject({ mode: z.enum(['AI', 'MANUAL']) });
 

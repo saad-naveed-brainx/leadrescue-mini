@@ -65,9 +65,13 @@ describe('a user from Company B can never see or change Company A data', () => {
     expect(res.status).toBe(400);
     expect(await count(`leads WHERE name = 'Sneaky'`)).toBe(0);
 
-    // A tenant id in the query string or a header is ignored: Bob still sees only B's leads.
+    // A tenant id in the query string is refused ...
+    const withQuery = await as(BOB_B).get(`/leads?tenantId=${SEED.companyA.id}`);
+    expect(withQuery.status).toBe(400);
+
+    // ... and one in a header is ignored: Bob still sees only B's leads.
     const list = await request(app)
-      .get(`/leads?tenantId=${SEED.companyA.id}`)
+      .get('/leads')
       .set('X-Demo-User', BOB_B)
       .set('X-Tenant-Id', SEED.companyA.id);
     expect(list.body.leads.map((l: { name: string }) => l.name)).toEqual(['Sam Rivera']);

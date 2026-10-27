@@ -2,15 +2,17 @@ import { Router } from 'express';
 import { currentUser, requireUser } from '../middleware/auth.js';
 import { notFound } from '../middleware/errors.js';
 import * as leads from '../services/leads.js';
-import { LeadCreateInput, LeadUpdateInput, isUuid } from '../validation.js';
+import { LeadCreateInput, LeadListQuery, LeadUpdateInput, isUuid } from '../validation.js';
 
 export const leadsRouter = Router();
 
 // Every /leads route needs a signed-in user; their company comes from requireUser.
 leadsRouter.use('/leads', requireUser);
 
+// ?status=new&limit=50&cursor=... → { leads, nextCursor }. Pass nextCursor back for the next page.
 leadsRouter.get('/leads', async (req, res) => {
-  res.json({ leads: await leads.listLeads(currentUser(req).tenantId) });
+  const query = LeadListQuery.parse(req.query);
+  res.json(await leads.listLeads(currentUser(req).tenantId, query));
 });
 
 leadsRouter.post('/leads', async (req, res) => {
