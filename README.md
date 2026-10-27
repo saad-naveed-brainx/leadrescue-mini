@@ -327,5 +327,5 @@ The tests cover the three the brief requires, among others:
 
 ## 8. Time spent and AI tools
 
-- **Time spent:** _to be filled in by the candidate._
+- **Time spent on 2026-10-27:** about 2.5 hours (job queue and parallel workers, crash-safe sending, lead list paging, UI polish). Work on earlier days is not included in this figure.
 - **AI tools used:** Claude Code (Anthropic's coding assistant), for design, code, tests and this README.
