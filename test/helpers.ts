@@ -3,6 +3,7 @@ import request from 'supertest';
 import { app } from '../src/app.js';
 import { db } from '../src/db.js';
 import { SEED, seed } from '../src/scripts/seed.js';
+import { runWorkerOnce } from '../src/services/worker.js';
 
 export { SEED };
 
@@ -15,7 +16,7 @@ export async function resetDb(): Promise<void> {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
-    await client.query('TRUNCATE messages, conversations, leads, users, tenants CASCADE');
+    await client.query('TRUNCATE jobs, messages, conversations, leads, users, tenants CASCADE');
     await seed(client);
     await client.query('COMMIT');
   } catch (err) {
@@ -50,6 +51,14 @@ export function sendSms(sms: Sms = {}) {
       fromNumber: sms.fromNumber ?? '+16465550199',
       body: sms.body ?? 'Hi, do you do weekend callouts?',
     });
+}
+
+/** Runs the background worker until no job is due, as `npm run worker` would. */
+export async function drainJobs(): Promise<void> {
+  for (let round = 0; round < 20; round++) {
+    if ((await runWorkerOnce(50)) === 0) return;
+  }
+  throw new Error('jobs still due after 20 rounds');
 }
 
 /** How many rows a query counts. */

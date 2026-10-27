@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { processPendingAiReply } from '../services/aiReply.js';
 import { saveInboundSms } from '../services/inboundSms.js';
 import { InboundSms } from '../validation.js';
 
@@ -14,14 +13,13 @@ webhooksRouter.post('/webhooks/twilio/inbound', async (req, res) => {
   const sms = InboundSms.parse(req.body);
   const saved = await saveInboundSms(sms);
 
-  // A repeat of a message we already have: nothing new is stored and no AI work starts.
+  // A repeat of a message we already have: nothing new is stored and no AI work is queued.
+  // 200, not an error, so Twilio stops retrying.
   if (saved.result === 'duplicate') {
     res.json({ result: 'duplicate' });
     return;
   }
 
-  // The message is safely saved (committed) before the AI step starts. In production this would
-  // run in a background worker; here it runs straight away so the demo and tests are simple.
-  const aiReply = await processPendingAiReply(saved.conversationId);
-  res.json({ ...saved, aiReply });
+  // The message and its AI reply job are saved. Answer straight away; a worker sends the reply.
+  res.json({ ...saved, aiReply: 'queued' });
 });

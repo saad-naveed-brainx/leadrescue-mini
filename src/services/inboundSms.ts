@@ -1,14 +1,19 @@
 import { withTransaction } from '../db.js';
 import { notFound } from '../middleware/errors.js';
 import type { InboundSms } from '../validation.js';
+import { enqueueJob } from './queue.js';
 
 export type InboundResult =
   | { result: 'duplicate' }
   | { result: 'saved'; leadId: string; conversationId: string; messageId: string };
 
 /**
- * Saves one incoming SMS: finds or creates the lead and its conversation, and stores the message.
- * All in one transaction, so either everything is saved or nothing is.
+ * Saves one incoming SMS: finds or creates the lead and its conversation, stores the message, and
+ * queues the AI reply job. All in one transaction, so either everything is saved or nothing is:
+ * a message can never be stored without its job.
+ *
+ * The AI reply itself is NOT done here. A background worker (src/worker.ts) picks up the job,
+ * so this answers Twilio in milliseconds however slow the AI is.
  *
  * Repeated delivery: messages.provider_message_id (the messageSid) is UNIQUE. If the same
  * messageSid arrives twice, even at the same moment, the database lets only one insert through.
@@ -63,6 +68,15 @@ export async function saveInboundSms(sms: InboundSms): Promise<InboundResult> {
       )
     ).rows[0];
     if (!message) return { result: 'duplicate' };
+
+    // 5. Queue the AI reply, in this same transaction. One job per customer message (dedupeKey),
+    //    and a duplicate delivery never gets here, so no duplicate AI work.
+    await enqueueJob(tx, {
+      tenantId: tenant.id,
+      conversationId,
+      type: 'ai_reply',
+      dedupeKey: `ai_reply:${message.id}`,
+    });
 
     return { result: 'saved', leadId, conversationId, messageId: message.id };
   });

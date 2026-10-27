@@ -13,6 +13,8 @@
     "db:setup": "npm run migrate && npm run seed",
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
+    "worker": "tsx src/worker.ts",
+    "dev:worker": "tsx watch src/worker.ts",
     "dev:web": "vite web",
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc --noEmit -p web",

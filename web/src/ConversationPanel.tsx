@@ -24,12 +24,18 @@ export function ConversationPanel({
   const [switching, setSwitching] = useState(false);
 
   useEffect(() => {
-    apiFetch<Conversation>(user, `/conversations/${conversationId}`)
-      .then((data) => {
-        setConversation(data);
-        setError(null);
-      })
-      .catch((err: Error) => setError(err.message));
+    const load = () =>
+      apiFetch<Conversation>(user, `/conversations/${conversationId}`)
+        .then((data) => {
+          setConversation(data);
+          setError(null);
+        })
+        .catch((err: Error) => setError(err.message));
+    void load();
+    // AI replies are sent by the background worker a moment after a text arrives, so check for
+    // new messages every 2 seconds while the panel is open.
+    const timer = setInterval(() => void load(), 2000);
+    return () => clearInterval(timer);
   }, [user, conversationId, reloadKey]);
 
   async function switchMode(mode: 'AI' | 'MANUAL') {
@@ -51,9 +57,10 @@ export function ConversationPanel({
 
   // Start at the newest message, like a chat app, whenever messages load or change.
   const messagesEnd = useRef<HTMLDivElement>(null);
+  const messageCount = conversation?.messages.length ?? 0;
   useEffect(() => {
     messagesEnd.current?.scrollIntoView({ block: 'end' });
-  }, [conversation]);
+  }, [messageCount]);
 
   // Escape closes the panel.
   useEffect(() => {

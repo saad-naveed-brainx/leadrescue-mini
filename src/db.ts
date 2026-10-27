@@ -2,7 +2,10 @@ import pg from 'pg';
 import { config } from './config.js';
 
 // One shared set of database connections for the whole process. Everything imports this.
-export const db = new pg.Pool({ connectionString: config.DATABASE_URL, max: 10 });
+export const db = new pg.Pool({
+  connectionString: config.DATABASE_URL,
+  max: config.DB_POOL_SIZE,
+});
 
 // A connection dropping while idle must not crash the server, but we want to see it.
 db.on('error', (err) => console.error('database connection error', err));

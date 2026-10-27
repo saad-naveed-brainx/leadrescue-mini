@@ -7,7 +7,8 @@ export type InboundResult =
   | {
       result: 'saved';
       conversationId: string;
-      aiReply: { sent: true } | { sent: false; reason: string };
+      /** The worker sends the reply a moment later (or not, if the conversation is MANUAL). */
+      aiReply: 'queued';
     };
 
 const newSid = () => `SM${crypto.randomUUID().replaceAll('-', '')}`;
@@ -94,7 +95,5 @@ function describe(result: InboundResult): string {
   if (result.result === 'duplicate') {
     return 'Duplicate: this messageSid was already stored. Nothing new saved, no AI reply.';
   }
-  return result.aiReply.sent
-    ? 'Saved. The AI replied.'
-    : `Saved. No AI reply (${result.aiReply.reason === 'manual_mode' ? 'conversation is MANUAL' : result.aiReply.reason}).`;
+  return 'Saved. AI reply queued: the worker answers in a moment (unless the conversation is MANUAL).';
 }

@@ -22,7 +22,13 @@ npm run db:setup     # creates the tables, then adds the seed data
 npm run dev          # API on http://localhost:4000 (restarts on file changes)
 ```
 
-`npm start` runs the API without watching for changes. Stop it with Ctrl-C.
+In a **second terminal**, start the background worker that sends the AI replies:
+
+```bash
+npm run worker       # runs 5 jobs at a time (WORKER_CONCURRENCY); start more for more throughput
+```
+
+`npm start` runs the API without watching for changes. Stop either with Ctrl-C: the worker finishes the jobs in progress first.
 
 ### Optional web UI
 
@@ -41,7 +47,7 @@ Pick the user at the top right (Alice = Company A, Bob = Company B). Then:
 ### Tests
 
 ```bash
-npm test             # 37 tests against a separate test database
+npm test             # 48 tests against a separate test database
 npm run check        # typecheck + lint + tests
 ```
 
@@ -120,7 +126,7 @@ SMS='{"messageSid":"SM001","toNumber":"+12125550100","fromNumber":"+16465550199"
 
 curl -s -X POST localhost:4000/webhooks/twilio/inbound -H "$J" -d "$SMS"
 # {"result":"saved","leadId":"...","conversationId":"<conversation id>","messageId":"...",
-#  "aiReply":{"sent":true,"messageId":"..."}}
+#  "aiReply":"queued"}        a moment later the worker sends the AI reply
 
 curl -s -X POST localhost:4000/webhooks/twilio/inbound -H "$J" -d "$SMS"
 # {"result":"duplicate"}   no new message, no AI work
@@ -140,13 +146,13 @@ curl -s -X POST localhost:4000/conversations/<conversation id>/handoff -H "$A" -
 
 curl -s -X POST localhost:4000/webhooks/twilio/inbound -H "$J" \
   -d '{"messageSid":"SM002","toNumber":"+12125550100","fromNumber":"+16465550199","body":"Hello?"}'
-# {"result":"saved",...,"aiReply":{"sent":false,"reason":"manual_mode"}}
+# {"result":"saved",...,"aiReply":"queued"}   the worker runs the job, sees MANUAL, sends nothing
 
 curl -s localhost:4000/conversations/<conversation id> -H "$A"
 # mode MANUAL; messages: customer text, AI reply, customer "Hello?" (no second AI reply)
 ```
 
-**Restart:** stop the API with Ctrl-C and start it again. Leads, conversations and messages are all in PostgreSQL, so the same `GET` calls return the same data.
+**Restart:** stop the API and the worker with Ctrl-C and start them again. Leads, conversations, messages and waiting jobs are all in PostgreSQL, so nothing is lost: the same `GET` calls return the same data, and the worker picks up any jobs still waiting.
 
 ---
 
@@ -170,7 +176,7 @@ Twilio may deliver the same message more than once. `messages.provider_message_i
 
 When copies arrive **at the same moment**, the database lets one insert through. The others wait for it to finish, then find the row already there and insert nothing. The lead and the conversation use the same pattern, so the copies all end up with one lead and one conversation.
 
-A repeat answers `200 {"result":"duplicate"}`, so Twilio stops retrying, and **starts no AI work**. A second rule makes duplicate AI work impossible even if the AI step runs twice: `messages.reply_to_message_id` is UNIQUE, so the database allows at most **one AI reply per customer message**.
+A repeat answers `200 {"result":"duplicate"}`, so Twilio stops retrying, and **queues no AI work**: the AI reply job is saved in the same transaction as the message, so a repeat never gets that far. A second rule makes duplicate AI work impossible even if the AI step runs twice: `messages.reply_to_message_id` is UNIQUE, so the database allows at most **one AI reply per customer message**.
 
 ### AI ↔ MANUAL hand-off, and the race between them
 
@@ -188,7 +194,21 @@ The hand-off (`POST /conversations/:id/handoff`) is an `UPDATE` of **the same ro
 
 So **once a hand-off to MANUAL has been confirmed**, no AI message can go out for that conversation. A reply that had already started before the hand-off may finish, and the hand-off answers only after it has.
 
-Here `processPendingAiReply` runs straight after the webhook saves the message. In production it would run in a background worker, and the same lock and check would apply unchanged.
+### Background worker and job queue (built for volume)
+
+The webhook does **not** call the AI. It saves the message **and an `ai_reply` job in the same transaction**, then answers Twilio straight away. A message can't be saved without its job, or the other way round. A separate worker process (`npm run worker`) does the slow part:
+
+- **Queue = a `jobs` table in PostgreSQL** (`migrations/0002_jobs.sql`). All queue SQL is in `src/services/queue.ts` (`enqueueJob`, `claimJobs`, `finishJob`, `failJob`, `releaseExpiredJobs`). Swapping it for Redis/SQS later means changing only that file.
+  - Why not Redis: the job must be saved in the same transaction as the message. With Redis that needs an extra "outbox" table, and PostgreSQL does the same amount of work either way.
+- **Parallel workers.** Each worker process runs `WORKER_CONCURRENCY` jobs at the same time, and you can start as many worker processes as you like. `FOR UPDATE SKIP LOCKED` hands each job to exactly one worker, and workers skip each other's jobs instead of waiting.
+- **One job per customer message** (`dedupe_key` UNIQUE): no duplicate AI work.
+- **Retries:** a job that throws (e.g. the AI is down) is retried after 2, 4, 8 … seconds (at most 60), and marked `failed` after 5 attempts.
+- **Crashed workers:** a running job has a time limit (`JOB_LEASE_SECONDS`). If its worker dies, the job goes back to the queue and another worker does it. A worker whose time limit ran out can't mark the job done any more, because its attempt number no longer matches.
+- **Clean shutdown:** on Ctrl-C or a deploy, a worker takes no new jobs and finishes the ones in progress.
+- **Small table:** finished jobs older than 24 hours are deleted. Only pending jobs are indexed for "what's due next".
+- **Database connections:** `DB_POOL_SIZE` per process. A worker refuses to start if `WORKER_CONCURRENCY` doesn't leave room for its own housekeeping connections.
+
+The worker calls the same `processPendingAiReply`, so the lock and the mode check above apply unchanged. If two workers ever ran the same job, the lock and the one-reply-per-message rule still allow only one reply.
 
 ---
 
@@ -222,17 +242,17 @@ Real Twilio signs every webhook. To add it in production:
 
 ## 5. Known limitations
 
-- **Crash at the worst moment.** If the server crashes after the AI stub "sends" but before the transaction commits, the reply row is rolled back, and a later run could send that reply again. The fix is to save a "sending" marker first and, after a crash, ask the SMS provider whether the message went out before resending.
-- **The AI step runs inside the webhook request**, not in a background worker. A slow AI makes Twilio wait. If the server stops between saving the message and replying, the reply is only sent when `processPendingAiReply` is run again for that conversation. Nothing runs it automatically yet.
-- **Handing back to AI doesn't reply by itself** to messages that arrived during MANUAL. The next customer text, or a call to `processPendingAiReply`, does.
+- **Crash at the worst moment.** If a worker crashes after the AI stub "sends" but before its transaction commits, the reply row is rolled back. The job is then retried, and the reply could be sent again. The fix is to save a "sending" marker first and, after a crash, ask the SMS provider whether the message went out before resending.
+- **Handing back to AI doesn't reply by itself** to messages that arrived during MANUAL. Their jobs already finished without sending. The next customer text does get a reply.
+- **Workers look for work every 500 ms** (`WORKER_POLL_MS`) rather than being notified, so a reply can take up to half a second longer to start. PostgreSQL `LISTEN/NOTIFY` would remove that delay.
 - **The mock login is not security** (see §4). There are no roles: any user of a company can do everything in that company.
 - **`GET /leads` returns at most 200 leads**, with no paging, search or filter.
 - **No Twilio signature check, rate limiting, security headers or CORS.** These are deliberate omissions for this offline exercise.
-- **The web UI is minimal**: leads, simulated SMS and conversations, with no live updates (it refreshes after your own actions). It has no automated tests; the API tests cover the rules.
+- **The web UI is minimal**: leads, simulated SMS and conversations. An open conversation checks for new messages every 2 seconds; the lead list refreshes after your own actions. It has no automated tests; the API tests cover the rules.
 
 ## 6. What I would improve with another day
 
-1. **A background worker** for `processPendingAiReply`: a job saved in the same transaction as the incoming message, with retries. Plus the crash-safe "sending" marker and provider check described above.
+1. **The crash-safe "sending" marker** and provider check described above, so a worker crash mid-send can never send twice. Plus a small admin command to list and retry `failed` jobs, and queue metrics (pending count, oldest pending job).
 2. **Real authentication** (OIDC tokens) and **roles** (owner/manager/member). Also PostgreSQL row-level security, as a second wall between companies.
 3. **Twilio signature verification**, the real form-encoded payload, rate limits and security headers.
 4. **Customer opt-out (STOP/START)**, honoured by the same lock as the hand-off, and an **audit log** of who switched modes and when.
@@ -245,7 +265,9 @@ Real Twilio signs every webhook. To add it in production:
 
 ```
 migrations/0001_init.sql        tables, keys, uniqueness rules
+migrations/0002_jobs.sql        the job queue table
 src/server.ts                   starts the API, clean shutdown
+src/worker.ts                   starts a background worker (npm run worker)
 src/app.ts                      middleware and routes, in order
 src/config.ts, src/db.ts        settings; one shared PostgreSQL pool + withTransaction
 src/validation.ts               every request body's rules (zod)
@@ -256,9 +278,11 @@ src/services/leads.ts           lead queries, all filtered by company
 src/services/inboundSms.ts      saving an incoming SMS, duplicates included
 src/services/aiReply.ts         processPendingAiReply: lock, check mode, send
 src/services/aiSender.ts        the stubbed AI sender
+src/services/queue.ts           the job queue: all its SQL in one file
+src/services/worker.ts          runs jobs: parallel slots, retries, housekeeping, clean stop
 src/services/conversations.ts   hand-off and conversation view
 src/scripts/                    migrate, seed
-test/                           tenant isolation, leads, webhook duplicates, hand-off and races
+test/                           tenant isolation, leads, webhook duplicates, hand-off and races, queue/workers
 web/                            optional React UI (Vite): leads, simulated SMS, conversation + hand-off
 ```
 

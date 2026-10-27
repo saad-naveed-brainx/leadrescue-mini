@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import { db } from '../src/db.js';
 import { processPendingAiReply } from '../src/services/aiReply.js';
 import { aiSender } from '../src/services/aiSender.js';
-import { ALICE_A, as, count, resetDb, sendSms } from './helpers.js';
+import { ALICE_A, as, count, drainJobs, resetDb, sendSms } from './helpers.js';
 
 let aiSends: ReturnType<typeof vi.spyOn>;
 
@@ -17,6 +17,7 @@ afterAll(() => db.end());
 /** A customer texts Company A; returns the conversation id (the AI has answered that first text). */
 async function startConversation(fromNumber = '+16465550199') {
   const res = await sendSms({ fromNumber });
+  await drainJobs(); // the worker answers the first text
   return res.body.conversationId as string;
 }
 
@@ -49,8 +50,9 @@ describe('MANUAL stops the AI', () => {
     aiSends.mockClear(); // forget the reply to the first text
     await handoff(id, 'MANUAL');
 
-    const res = await sendSms({ fromNumber: '+16465550199', body: 'Hello? Anyone there?' });
-    expect(res.body.aiReply).toEqual({ sent: false, reason: 'manual_mode' });
+    await sendSms({ fromNumber: '+16465550199', body: 'Hello? Anyone there?' });
+    await drainJobs(); // the worker runs the job, sees MANUAL, sends nothing
+    expect(await count(`jobs WHERE status = 'done'`)).toBe(2); // both texts' jobs finished
     expect(await count(`messages WHERE body = 'Hello? Anyone there?'`)).toBe(1);
     expect(aiSends).not.toHaveBeenCalled();
   });
