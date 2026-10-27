@@ -1,9 +1,18 @@
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  type MockInstance,
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { db } from '../src/db.js';
 import { aiSender } from '../src/services/aiSender.js';
 import { SEED, count, drainJobs, resetDb, sendSms } from './helpers.js';
 
-let aiSends: ReturnType<typeof vi.spyOn>;
+let aiSends: MockInstance<typeof aiSender.send>;
 
 beforeEach(async () => {
   await resetDb();

@@ -16,7 +16,9 @@ export async function resetDb(): Promise<void> {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
-    await client.query('TRUNCATE jobs, messages, conversations, leads, users, tenants CASCADE');
+    await client.query(
+      'TRUNCATE mock_sms_sent, jobs, messages, conversations, leads, users, tenants CASCADE',
+    );
     await seed(client);
     await client.query('COMMIT');
   } catch (err) {

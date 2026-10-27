@@ -114,7 +114,8 @@ export function ConversationPanel({
             <div key={m.id} className={`bubble-row bubble-row-${m.author}`}>
               <div className={`bubble bubble-${m.author}`}>{m.body}</div>
               <span className="bubble-meta">
-                {m.author === 'ai' ? 'AI' : 'Customer'} ·{' '}
+                {m.author === 'ai' ? 'AI' : 'Customer'}
+                {m.sendStatus === 'sending' && ' · sending…'} ·{' '}
                 {new Date(m.createdAt).toLocaleTimeString([], {
                   hour: '2-digit',
                   minute: '2-digit',

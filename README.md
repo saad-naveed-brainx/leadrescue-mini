@@ -47,7 +47,7 @@ Pick the user at the top right (Alice = Company A, Bob = Company B). Then:
 ### Tests
 
 ```bash
-npm test             # 48 tests against a separate test database
+npm test             # 54 tests against a separate test database
 npm run check        # typecheck + lint + tests
 ```
 
@@ -82,13 +82,14 @@ Every `/leads` and `/conversations` request needs the **`X-Demo-User`** header (
 - **Lead statuses:** `new`, `contacted`, `qualified`, `closed`.
 - **Errors** always look like `{"error": {"code", "message", "details"}}`.
 
-| Status | When                                                       |
-| ------ | ---------------------------------------------------------- |
-| 400    | Invalid or unknown fields, or broken JSON                  |
-| 401    | `X-Demo-User` missing or unknown                           |
-| 404    | Not found, **including another company's record**          |
-| 409    | A lead with this phone already exists in your company      |
-| 500    | Unexpected failure; the answer contains no internal detail |
+| Status | When                                                                         |
+| ------ | ---------------------------------------------------------------------------- |
+| 400    | Invalid or unknown fields, or broken JSON                                    |
+| 401    | `X-Demo-User` missing or unknown                                             |
+| 404    | Not found, **including another company's record**                            |
+| 409    | A lead with this phone already exists in your company                        |
+| 500    | Unexpected failure; the answer contains no internal detail                   |
+| 503    | Hand-off only: a reply is being sent and didn't finish within 5 s; try again |
 
 ### Examples
 
@@ -180,19 +181,34 @@ A repeat answers `200 {"result":"duplicate"}`, so Twilio stops retrying, and **q
 
 ### AI ↔ MANUAL hand-off, and the race between them
 
-`processPendingAiReply(conversationId)` in `src/services/aiReply.ts` is the only place an AI reply is sent. It runs these steps in one transaction:
+`processPendingAiReply(conversationId)` in `src/services/aiReply.ts` is the only place an AI reply is sent. The worker calls it for each job. It works in four steps:
 
-1. **Lock the conversation row** (`SELECT … FOR UPDATE`).
-2. **Read the mode, now, under that lock.** If it isn't `AI`, stop.
-3. Check that the customer's latest message hasn't been answered yet.
-4. Save the reply, call the stubbed sender, commit. Committing releases the lock.
+| Step          | What happens                                                                                                                             | Conversation lock                                 |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| **A. Write**  | Ask the AI for the reply text (slow, seconds)                                                                                            | ❌ not held, so a hand-off never waits for the AI |
+| **B. Claim**  | Take the lock. Check **again, fresh**: mode still `AI`? latest customer message still unanswered? Save the reply as `sending` and commit | ✅                                                |
+| **C. Send**   | Call the SMS provider                                                                                                                    | ✅                                                |
+| **D. Record** | Mark the reply `sent` with the provider's message id. Release the lock                                                                   | ✅                                                |
 
-The hand-off (`POST /conversations/:id/handoff`) is an `UPDATE` of **the same row**, so it needs the same lock:
+**The lock** is a PostgreSQL _advisory lock_ (`src/services/conversationLock.ts`) named after the conversation. It belongs to the worker's **connection**, not to a transaction, so it stays held across the commits in B and D. If the worker dies, its connection drops and PostgreSQL releases the lock by itself.
 
-- If the AI is in the middle of sending, the hand-off **waits** until that send is finished.
-- If the hand-off got there first, the AI step waits for it, then reads `MANUAL` and sends nothing.
+**The hand-off** (`POST /conversations/:id/handoff`) takes **the same lock** before changing the mode:
 
-So **once a hand-off to MANUAL has been confirmed**, no AI message can go out for that conversation. A reply that had already started before the hand-off may finish, and the hand-off answers only after it has.
+- If a reply is between B and D, the hand-off **waits** until it has been sent and recorded.
+- If the hand-off got there first, the AI step reads `MANUAL` in step B and sends nothing.
+- If the lock isn't free within **5 seconds** (e.g. a stuck provider), the hand-off answers **503 `CONVERSATION_BUSY`** ("try again") instead of hanging, and changes nothing.
+
+So **once a hand-off to MANUAL has been confirmed**, no AI message can go out for that conversation. A reply already between B and D finishes first; the hand-off answers only after it has.
+
+### A crash in the middle of sending never sends twice
+
+The dangerous moment is after the provider has the SMS (C) but before we recorded it (D). Because step B **committed** the reply as `sending`, that record survives a crash. When the job is retried:
+
+1. The worker finds the reply still `sending`.
+2. It **asks the provider whether it already went out** (`aiSender.findSent`). If yes, it just records `sent`: **no second SMS.**
+3. If the provider never got it, it sends now. If the conversation was handed to MANUAL meanwhile, the reply is marked `cancelled` instead, and it isn't shown in the conversation.
+
+A test starts a **real worker process**, kills it (`SIGKILL`) right after the provider got the SMS, and checks that the retry produces exactly one SMS.
 
 ### Background worker and job queue (built for volume)
 
@@ -225,7 +241,7 @@ The worker calls the same `processPendingAiReply`, so the lock and the mode chec
 - **One lead per phone number per company**, and one conversation per lead. Two companies may each have a lead with the same phone; they are separate leads.
 - A text to a number that belongs to no company answers **404** and stores nothing.
 - A lead created by an SMS has no name until someone adds one. Leads created through the API need a name and a phone.
-- **The AI is a stub:** a fixed polite reply that mentions the company's name. "Sending" records the message in memory (`sentMessages`) and in the `messages` table. Nothing leaves the machine.
+- **The AI and SMS provider are stubs** (`src/services/aiSender.ts`): a fixed polite reply that mentions the company's name. "Sending" writes a row to `mock_sms_sent`, which plays the provider's own record of what it sent. Nothing leaves the machine.
 - Phone numbers are accepted only in E.164 format (`+` and 8–15 digits). They aren't reformatted.
 
 ### Twilio signature verification (not implemented in this mock)
@@ -242,7 +258,7 @@ Real Twilio signs every webhook. To add it in production:
 
 ## 5. Known limitations
 
-- **Crash at the worst moment.** If a worker crashes after the AI stub "sends" but before its transaction commits, the reply row is rolled back. The job is then retried, and the reply could be sent again. The fix is to save a "sending" marker first and, after a crash, ask the SMS provider whether the message went out before resending.
+- **"Did it go out?" with real Twilio.** The mock provider can be asked by our reply's id. Twilio has no such key: production would save Twilio's message id the moment it answers, and for the remaining gap search Twilio's sent messages by number and time.
 - **Handing back to AI doesn't reply by itself** to messages that arrived during MANUAL. Their jobs already finished without sending. The next customer text does get a reply.
 - **Workers look for work every 500 ms** (`WORKER_POLL_MS`) rather than being notified, so a reply can take up to half a second longer to start. PostgreSQL `LISTEN/NOTIFY` would remove that delay.
 - **The mock login is not security** (see §4). There are no roles: any user of a company can do everything in that company.
@@ -252,7 +268,7 @@ Real Twilio signs every webhook. To add it in production:
 
 ## 6. What I would improve with another day
 
-1. **The crash-safe "sending" marker** and provider check described above, so a worker crash mid-send can never send twice. Plus a small admin command to list and retry `failed` jobs, and queue metrics (pending count, oldest pending job).
+1. **Operations:** a small admin command to list and retry `failed` jobs, queue metrics (pending count, age of the oldest pending job), and an alert when replies stay `sending`.
 2. **Real authentication** (OIDC tokens) and **roles** (owner/manager/member). Also PostgreSQL row-level security, as a second wall between companies.
 3. **Twilio signature verification**, the real form-encoded payload, rate limits and security headers.
 4. **Customer opt-out (STOP/START)**, honoured by the same lock as the hand-off, and an **audit log** of who switched modes and when.
@@ -266,6 +282,7 @@ Real Twilio signs every webhook. To add it in production:
 ```
 migrations/0001_init.sql        tables, keys, uniqueness rules
 migrations/0002_jobs.sql        the job queue table
+migrations/0003_send_status.sql AI reply progress (sending/sent/cancelled), mock provider table
 src/server.ts                   starts the API, clean shutdown
 src/worker.ts                   starts a background worker (npm run worker)
 src/app.ts                      middleware and routes, in order
@@ -276,8 +293,9 @@ src/middleware/errors.ts        one error shape; nothing internal leaks
 src/routes/                     leads, conversations, webhooks (thin: validate → service)
 src/services/leads.ts           lead queries, all filtered by company
 src/services/inboundSms.ts      saving an incoming SMS, duplicates included
-src/services/aiReply.ts         processPendingAiReply: lock, check mode, send
-src/services/aiSender.ts        the stubbed AI sender
+src/services/aiReply.ts         processPendingAiReply: write, claim, send, record (crash-safe)
+src/services/conversationLock.ts the per-conversation lock shared by AI sends and the hand-off
+src/services/aiSender.ts        the stubbed AI and SMS provider (send, "did you send this?")
 src/services/queue.ts           the job queue: all its SQL in one file
 src/services/worker.ts          runs jobs: parallel slots, retries, housekeeping, clean stop
 src/services/conversations.ts   hand-off and conversation view

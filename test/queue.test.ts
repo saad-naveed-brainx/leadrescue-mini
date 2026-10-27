@@ -1,5 +1,14 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  type MockInstance,
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { db } from '../src/db.js';
 import { aiSender } from '../src/services/aiSender.js';
 import { withTransaction } from '../src/db.js';
@@ -13,7 +22,9 @@ import {
 import { runWorkerOnce, startWorker } from '../src/services/worker.js';
 import { SEED, count, drainJobs, resetDb, sendSms } from './helpers.js';
 
-let aiSends: ReturnType<typeof vi.spyOn>;
+// The real (mock-provider) send, kept so tests can slow it down and still really send.
+const realSend = aiSender.send;
+let aiSends: MockInstance<typeof aiSender.send>;
 
 beforeEach(async () => {
   await resetDb();
@@ -101,8 +112,9 @@ describe('parallel workers', () => {
 
   it('one worker process runs several jobs at the same time', async () => {
     await textsFromNewCustomers(10);
-    aiSends.mockImplementation(async () => {
-      await sleep(200); // a slow AI / SMS provider
+    aiSends.mockImplementation(async (sms) => {
+      await sleep(200); // a slow SMS provider
+      return realSend(sms);
     });
 
     const startedAt = Date.now();
@@ -116,8 +128,9 @@ describe('parallel workers', () => {
   });
 
   it('stopping a worker lets the job in progress finish', async () => {
-    aiSends.mockImplementation(async () => {
+    aiSends.mockImplementation(async (sms) => {
       await sleep(300);
+      return realSend(sms);
     });
     const worker = startWorker({ concurrency: 1, pollMs: 20 });
     await sendSms({ fromNumber: '+16465550199' });
@@ -130,7 +143,7 @@ describe('parallel workers', () => {
 });
 
 describe('failures and retries', () => {
-  it('a failed send is retried later, and nothing half-done is left behind', async () => {
+  it('a failed send is retried later; the saved "sending" reply is then sent once', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     aiSends.mockRejectedValueOnce(new Error('AI service down'));
     await sendSms({ fromNumber: '+16465550199' });
@@ -142,12 +155,15 @@ describe('failures and retries', () => {
       last_error: 'AI service down',
       later: true, // waits before the next try
     });
-    expect(await count(`messages WHERE author = 'ai'`)).toBe(0); // the reply row rolled back
+    // The reply was saved as 'sending' before the provider call, and stays so until it goes out.
+    expect(await count(`messages WHERE author = 'ai' AND send_status = 'sending'`)).toBe(1);
+    expect(await count('mock_sms_sent')).toBe(0); // the provider never got it
 
     await db.query('UPDATE jobs SET run_at = now()'); // skip the wait
     await drainJobs();
     expect(await jobRow()).toMatchObject({ status: 'done', attempts: 2 });
-    expect(await count(`messages WHERE author = 'ai'`)).toBe(1);
+    expect(await count(`messages WHERE author = 'ai' AND send_status = 'sent'`)).toBe(1);
+    expect(await count('mock_sms_sent')).toBe(1);
   });
 
   it('after max attempts the job is marked failed and not retried', async () => {

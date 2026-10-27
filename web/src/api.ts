@@ -26,6 +26,8 @@ export interface Message {
   direction: 'inbound' | 'outbound';
   author: 'customer' | 'ai';
   body: string;
+  /** AI replies: 'sending' until the SMS provider has it, then 'sent'. */
+  sendStatus: 'sending' | 'sent' | null;
   createdAt: string;
 }
 

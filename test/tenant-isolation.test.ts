@@ -76,8 +76,8 @@ describe('a user from Company B can never see or change Company A data', () => {
   it('the database itself refuses a message pointing at another company’s conversation', async () => {
     const sms = await sendSms(); // conversation belongs to Company A
     const insert = db.query(
-      `INSERT INTO messages (tenant_id, conversation_id, direction, author, body)
-       VALUES ($1, $2, 'outbound', 'ai', 'cross-company')`,
+      `INSERT INTO messages (tenant_id, conversation_id, direction, author, body, send_status)
+       VALUES ($1, $2, 'outbound', 'ai', 'cross-company', 'sent')`,
       [SEED.companyB.id, sms.body.conversationId],
     );
     await expect(insert).rejects.toMatchObject({ code: '23503' }); // foreign key violation

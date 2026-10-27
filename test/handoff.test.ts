@@ -1,11 +1,22 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  type MockInstance,
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { db } from '../src/db.js';
 import { processPendingAiReply } from '../src/services/aiReply.js';
 import { aiSender } from '../src/services/aiSender.js';
 import { ALICE_A, as, count, drainJobs, resetDb, sendSms } from './helpers.js';
 
-let aiSends: ReturnType<typeof vi.spyOn>;
+// The real (mock-provider) send, kept so tests can slow it down and still really send.
+const realSend = aiSender.send;
+let aiSends: MockInstance<typeof aiSender.send>;
 
 beforeEach(async () => {
   await resetDb();
@@ -96,8 +107,9 @@ describe('MANUAL stops the AI', () => {
       [id],
     );
     const second = db.query(
-      `INSERT INTO messages (tenant_id, conversation_id, direction, author, body, reply_to_message_id)
-       VALUES ($1, $2, 'outbound', 'ai', 'second reply', $3)`,
+      `INSERT INTO messages
+         (tenant_id, conversation_id, direction, author, body, reply_to_message_id, send_status)
+       VALUES ($1, $2, 'outbound', 'ai', 'second reply', $3, 'sending')`,
       [rows[0]!.tenant_id, id, rows[0]!.id],
     );
     await expect(second).rejects.toMatchObject({ code: '23505' }); // unique rule broken
@@ -112,8 +124,9 @@ describe('the race between the AI sending and a hand-off', () => {
     await handoff(id, 'AI');
 
     // Make the stub's send slow, so the hand-off below arrives while the AI is mid-send.
-    aiSends.mockImplementation(async () => {
+    aiSends.mockImplementation(async (sms) => {
       await sleep(300);
+      return realSend(sms);
     });
 
     const aiStep = processPendingAiReply(id);
@@ -142,9 +155,10 @@ describe('the race between the AI sending and a hand-off', () => {
 
       let confirmedAt = 0;
       const sendTimes: number[] = [];
-      aiSends.mockImplementation(async () => {
+      aiSends.mockImplementation(async (sms) => {
         sendTimes.push(Date.now());
         await sleep(Math.random() * 5);
+        return realSend(sms);
       });
 
       await Promise.all([
